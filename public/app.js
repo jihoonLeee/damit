@@ -193,25 +193,25 @@ function setMetaPill(element, text, tone = "") {
 }
 
 function updateWorkspaceMeta(payload = null) {
-  setMetaPill(elements.authBadge, `Auth: ${authMode === "session" ? "SESSION" : "OWNER TOKEN"}`, authMode === "session" ? "success" : "warning");
+  setMetaPill(elements.authBadge, `접근 방식: ${authMode === "session" ? "세션 로그인" : "운영 토큰"}`, authMode === "session" ? "success" : "warning");
 
   if (!payload) {
-    setMetaPill(elements.runtimeBadge, "Runtime: unavailable", "warning");
-    setMetaPill(elements.countsBadge, "Cases: unavailable", "warning");
+    setMetaPill(elements.runtimeBadge, "저장소: 확인 실패", "warning");
+    setMetaPill(elements.countsBadge, "작업 수: 확인 실패", "warning");
     if (elements.workspaceTip) {
-      elements.workspaceTip.textContent = "Workspace metadata is unavailable. Check the local server status before demoing.";
+      elements.workspaceTip.textContent = "운영 메타 정보를 가져오지 못했습니다. 서버 상태와 로그인 상태를 먼저 확인해주세요.";
     }
     return;
   }
 
-  const countText = `Cases: ${payload.counts?.jobCases ?? 0} ? Records: ${payload.counts?.fieldRecords ?? 0}`;
-  setMetaPill(elements.runtimeBadge, `Runtime: ${payload.storageEngine || "unknown"}`, payload.storageEngine === "POSTGRES" ? "success" : "warning");
+  const countText = `작업 ${payload.counts?.jobCases ?? 0}건 · 현장 기록 ${payload.counts?.fieldRecords ?? 0}건`;
+  setMetaPill(elements.runtimeBadge, `저장소: ${payload.storageEngine || "알 수 없음"}`, payload.storageEngine === "POSTGRES" ? "success" : "warning");
   setMetaPill(elements.countsBadge, countText, payload.counts?.jobCases ? "success" : "");
 
   if (elements.workspaceTip) {
     elements.workspaceTip.textContent = payload.counts?.jobCases
-      ? "Workspace already has data. Use the current records for a demo, or reset before a clean walkthrough."
-      : "Workspace is clean and ready for a fresh local walkthrough.";
+      ? "현재 운영 데이터가 있습니다. 기존 작업을 이어서 처리하거나 초기화 후 새 점검을 시작하세요."
+      : "현재 작업이 없습니다. 왼쪽에서 현장 기록부터 새로 시작할 수 있습니다.";
   }
 }
 
@@ -408,12 +408,12 @@ async function loadHealth() {
   try {
     const payload = await request("/api/v1/health");
     if (payload?.status === "ok") {
-      showFeedback(elements.fieldRecordFeedback, `?? ?? ?? ? jobCases ${payload.counts.jobCases}?`, "success");
+      showFeedback(elements.fieldRecordFeedback, `운영 상태를 불러왔습니다. 현재 작업 ${payload.counts.jobCases}건입니다.`, "success");
       updateWorkspaceMeta(payload);
     }
   } catch {
     updateWorkspaceMeta(null);
-    showFeedback(elements.fieldRecordFeedback, "?? ?? ??? ??????.", "error");
+    showFeedback(elements.fieldRecordFeedback, "운영 상태를 불러오지 못했습니다. 서버 연결을 확인해주세요.", "error");
   }
 }
 
@@ -436,7 +436,7 @@ async function loadJobCases() {
 
 function renderJobCases() {
   if (state.jobCases.length === 0) {
-    elements.jobCases.innerHTML = `<div class="empty-state">문제가 보이면 먼저 사진부터 남겨보세요.</div>`;
+    elements.jobCases.innerHTML = `<div class="empty-state">아직 열린 작업이 없습니다. 왼쪽에서 현장 기록부터 시작하세요.</div>`;
     return;
   }
 
@@ -472,12 +472,12 @@ function renderLinkCandidates() {
   const filtered = state.jobCases.filter((item) => !query || item.customerLabel.toLowerCase().includes(query) || item.siteLabel.toLowerCase().includes(query));
 
   if (!state.currentFieldRecordId) {
-    elements.linkJobCases.innerHTML = `<p class="helper-text">현장 기록을 저장하면 기존 작업 건 연결이 열립니다.</p>`;
+    elements.linkJobCases.innerHTML = `<p class="helper-text">현장 기록을 저장하면 연결 가능한 작업 건이 여기에 표시됩니다.</p>`;
     return;
   }
 
   if (filtered.length === 0) {
-    elements.linkJobCases.innerHTML = `<p class="helper-text">연결할 작업 건이 없습니다.</p>`;
+    elements.linkJobCases.innerHTML = `<p class="helper-text">검색 조건에 맞는 작업 건이 없습니다.</p>`;
     return;
   }
 
