@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
 
+env:
+  TAILSCALE_TAGS: ${{ secrets.TAILSCALE_TAGS != '' && secrets.TAILSCALE_TAGS || 'tag:ci' }}
+
 concurrency:
   group: self-host-deploy
   cancel-in-progress: false
@@ -15,26 +18,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Join Tailscale network
-        uses: tailscale/github-action@v3
+      - name: Join Tailscale network (OAuth client)
+        if: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID != '' && secrets.TAILSCALE_OAUTH_SECRET != '' }}
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+          tags: ${{ env.TAILSCALE_TAGS }}
+          hostname: github-actions-damit-deploy
+          ping: ${{ secrets.SELF_HOST_TAILNET_HOST }}
+
+      - name: Join Tailscale network (Auth key fallback)
+        if: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID == '' || secrets.TAILSCALE_OAUTH_SECRET == '' }}
+        uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
           hostname: github-actions-damit-deploy
+          ping: ${{ secrets.SELF_HOST_TAILNET_HOST }}
 
       - name: Start SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SELF_HOST_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          eval "$(ssh-agent -s)"
+          printf '%s' "${{ secrets.SELF_HOST_SSH_KEY }}" | tr -d '\r' | ssh-add -
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
 
       - name: Trust server host key
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_TAILNET_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Sync repository
+        shell: bash
         run: |
+          set -euo pipefail
           rsync -az --delete \
             --filter='P deploy/homelab/.env' \
             --exclude '.git/' \
@@ -45,11 +69,15 @@ jobs:
             ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
 
       - name: Deploy on server
+        shell: bash
         run: |
+          set -euo pipefail
           ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/deploy.sh"
 
       - name: Smoke check on server
+        shell: bash
         run: |
+          set -euo pipefail
           ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/smoke.sh"

@@ -2,22 +2,38 @@
 
 ## Goal
 
-Make the self-host deploy workflow actually usable from GitHub Actions.
+Make the self-host deploy workflows usable today and easier to maintain as GitHub Actions and Tailscale evolve.
 
 ## PM decision
 
-Because the Ubuntu server is private and reachable through Tailscale, the GitHub workflow must also join the tailnet.
+The Ubuntu server remains private and reachable through Tailscale, so GitHub-hosted runners must join the tailnet before SSH.
 
-Direct LAN SSH from GitHub-hosted runners is not viable.
+## Secret strategy
+
+Prefer OAuth client secrets for Tailscale.
+Keep the existing auth key only as a temporary fallback so deploys do not break during migration.
 
 ## Required repository secrets
 
-- `TAILSCALE_AUTHKEY`
+### Required now
+
 - `SELF_HOST_TAILNET_HOST`
 - `SELF_HOST_SSH_PORT`
 - `SELF_HOST_SSH_USER`
 - `SELF_HOST_SSH_KEY`
 - `SELF_HOST_APP_DIR`
+
+### Tailscale authentication
+
+Preferred:
+
+- `TAILSCALE_OAUTH_CLIENT_ID`
+- `TAILSCALE_OAUTH_SECRET`
+- `TAILSCALE_TAGS`
+
+Temporary fallback:
+
+- `TAILSCALE_AUTHKEY`
 
 ## Recommended values for this project
 
@@ -25,28 +41,15 @@ Direct LAN SSH from GitHub-hosted runners is not viable.
 - `SELF_HOST_SSH_PORT`: `22`
 - `SELF_HOST_SSH_USER`: `jihoon`
 - `SELF_HOST_APP_DIR`: `/home/jihoon/damit/app`
+- `TAILSCALE_TAGS`: `tag:ci`
 
-## Values you must provide manually
-
-### `TAILSCALE_AUTHKEY`
-
-Create a reusable auth key in the Tailscale admin console for GitHub Actions.
-
-Recommended shape:
-
-- reusable key
-- tagged or user-scoped for CI use only
-- expiry kept short if possible
-
-### `SELF_HOST_SSH_KEY`
+## `SELF_HOST_SSH_KEY`
 
 Use the private SSH key that matches the public key already trusted by the Ubuntu server.
+For CI, use a dedicated deploy key with no passphrase.
 
-For this machine, that is the content of:
-
-- `C:\Users\jihoo\.ssh\id_rsa`
-
-Do not commit this key. Paste it only into the GitHub secret field.
+Do not commit this key.
+Paste it only into the GitHub secret field.
 
 ## Exact GitHub UI setup steps
 
@@ -61,70 +64,89 @@ Open:
 3. `Actions`
 4. `New repository secret`
 
-Create these secrets one by one:
+## Secrets to create
 
-### 1. `TAILSCALE_AUTHKEY`
-
-Value:
-
-- the auth key you create in Tailscale admin
-
-### 2. `SELF_HOST_TAILNET_HOST`
+### 1. `SELF_HOST_TAILNET_HOST`
 
 Value:
 
 - `100.68.88.16`
 
-### 3. `SELF_HOST_SSH_PORT`
+### 2. `SELF_HOST_SSH_PORT`
 
 Value:
 
 - `22`
 
-### 4. `SELF_HOST_SSH_USER`
+### 3. `SELF_HOST_SSH_USER`
 
 Value:
 
 - `jihoon`
 
-### 5. `SELF_HOST_APP_DIR`
+### 4. `SELF_HOST_APP_DIR`
 
 Value:
 
 - `/home/jihoon/damit/app`
 
-### 6. `SELF_HOST_SSH_KEY`
+### 5. `SELF_HOST_SSH_KEY`
 
 Value:
 
-- full contents of `C:\Users\jihoo\.ssh\id_rsa`
+- full contents of the CI deploy key trusted by the Ubuntu server
 
-## Tailscale auth key creation steps
+### 6. `TAILSCALE_TAGS`
 
-Open Tailscale admin console and create an auth key for GitHub Actions.
+Value:
+
+- `tag:ci`
+
+### 7. Preferred Tailscale secrets
+
+- `TAILSCALE_OAUTH_CLIENT_ID`
+- `TAILSCALE_OAUTH_SECRET`
+
+### 8. Legacy fallback secret
+
+- `TAILSCALE_AUTHKEY`
+
+## Tailscale OAuth client setup
+
+Official reference:
+
+- [tailscale/github-action README](https://github.com/tailscale/github-action)
+- [GitHub Marketplace: Connect Tailscale](https://github.com/marketplace/actions/connect-tailscale)
 
 Recommended process:
 
-1. Go to Tailscale admin
-2. Open `Settings` or `Keys`
-3. Create new auth key
-4. Prefer `reusable` for GitHub Actions
-5. Copy the generated key immediately
-6. Save it as `TAILSCALE_AUTHKEY` in GitHub Actions secrets
+1. Open the Tailscale admin console.
+2. Create an OAuth client for CI use.
+3. Give it writable `auth_keys` scope.
+4. Ensure it is allowed to create nodes with `tag:ci` or a tag you own.
+5. Save the client ID as `TAILSCALE_OAUTH_CLIENT_ID`.
+6. Save the client secret as `TAILSCALE_OAUTH_SECRET`.
+7. Save `tag:ci` as `TAILSCALE_TAGS` unless you intentionally use a different tag.
 
-## Workflow path
+## Temporary auth key fallback
 
-The workflow now does this:
+If OAuth secrets are not present yet, the workflows still fall back to `TAILSCALE_AUTHKEY`.
+This keeps deploys working, but Tailscale marks `authkey` as deprecated for this GitHub Action path.
 
-1. checks out the repository
-2. joins the tailnet with Tailscale
-3. starts an SSH agent
-4. trusts the server host key
-5. syncs the repo with `rsync`
-6. runs the self-host deploy script
-7. runs the self-host smoke script
+## Workflow behavior
 
-The workflow protects the server-side `deploy/homelab/.env` file during `rsync --delete`, so local secrets stored on the Ubuntu host are not removed on each deploy.
+The workflows now do this:
+
+1. check out the repository with `actions/checkout@v5`
+2. join the tailnet through OAuth client secrets when present
+3. fall back to auth key only when OAuth secrets are missing
+4. start `ssh-agent` with an inline shell step instead of a deprecated third-party action
+5. trust the server host key
+6. sync the repo with `rsync`
+7. run the self-host deploy script
+8. run the self-host smoke script
+
+The workflow still protects the server-side `deploy/homelab/.env` file during `rsync --delete`.
 
 ## How to run after secrets are set
 
@@ -133,21 +155,18 @@ The workflow protects the server-side `deploy/homelab/.env` file during `rsync -
 3. Click `Run workflow`
 4. Run it on `main`
 
-## What success looks like
+## Success criteria
 
-The workflow should:
+A healthy run should:
 
 - join Tailscale successfully
 - SSH into the Ubuntu server
 - sync the repository
 - run `deploy/homelab/deploy.sh`
 - run `deploy/homelab/smoke.sh`
-
-## Current blocker
-
-The workflow file is ready, but the secrets cannot be committed and must be added in GitHub settings.
+- avoid Node 20 warnings from checkout and ssh-agent
 
 ## PM note
 
-This is the correct deployment shape for a private self-host environment.
-It is still not the same thing as public production.
+This remains the correct deployment shape for a private self-host environment.
+It is still separate from public production.
