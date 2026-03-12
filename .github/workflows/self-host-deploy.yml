@@ -36,6 +36,7 @@ jobs:
       - name: Sync repository
         run: |
           rsync -az --delete \
+            --filter='P deploy/homelab/.env' \
             --exclude '.git/' \
             --exclude 'node_modules/' \
             --exclude 'data/' \

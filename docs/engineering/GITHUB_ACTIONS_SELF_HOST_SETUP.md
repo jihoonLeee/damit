@@ -124,6 +124,8 @@ The workflow now does this:
 6. runs the self-host deploy script
 7. runs the self-host smoke script
 
+The workflow protects the server-side `deploy/homelab/.env` file during `rsync --delete`, so local secrets stored on the Ubuntu host are not removed on each deploy.
+
 ## How to run after secrets are set
 
 1. Open repository `Actions`
