@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>다밋 베타 로그인</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="auth-body">
+  <div class="auth-shell">
+    <section class="auth-panel">
+      <div class="brand-lockup compact">
+        <img class="brand-mark small" src="/damit-mark.svg" alt="다밋 로고" />
+        <div>
+          <p class="eyebrow brand-eyebrow">DAMIT BETA</p>
+          <strong class="brand-name small">다밋</strong>
+        </div>
+      </div>
+      <h1>베타 로그인</h1>
+      <p class="auth-copy">magic link를 이메일로 보내드립니다. 최초 로그인이라면 업체 이름도 함께 설정합니다.</p>
+      <p class="auth-strapline">설명은 빠르게, 기록은 분명하게.</p>
+
+      <div id="invite-banner" class="auth-debug hidden"></div>
+
+      <form id="challenge-form" class="stack auth-form">
+        <label class="field">
+          <span>이메일</span>
+          <input type="email" id="email" placeholder="owner@company.com" required />
+        </label>
+        <button type="submit" class="primary-button action-emphasis">로그인 링크 보내기</button>
+      </form>
+
+      <form id="setup-form" class="stack auth-form hidden">
+        <label class="field">
+          <span>표시 이름</span>
+          <input type="text" id="displayName" placeholder="예: 김대표" />
+        </label>
+        <label class="field">
+          <span>업체 이름</span>
+          <input type="text" id="companyName" placeholder="예: 클린홈 송파점" required />
+        </label>
+        <button type="submit" class="primary-button action-emphasis">업체 생성 후 로그인 완료</button>
+      </form>
+
+      <div id="auth-feedback" class="feedback" aria-live="polite"></div>
+      <div id="debug-link" class="auth-debug hidden"></div>
+      <div class="auth-links">
+        <a href="/">다밋 랜딩으로 돌아가기</a>
+        <a href="/app">파일럿 워크스페이스 열기</a>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="/login.js"></script>
+</body>
+</html>

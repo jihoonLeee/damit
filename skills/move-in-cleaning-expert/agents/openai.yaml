@@ -1,0 +1,4 @@
+interface:
+  display_name: "Move-In Cleaning Expert"
+  short_description: "Validate product and UX from a move-in cleaning field-ops perspective"
+  default_prompt: "Review the product from a move-in cleaning field expert perspective. Check job scope, extra-charge explanations, photo evidence, customer reactions, and agreement record structure, then suggest practical improvements."

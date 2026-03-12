@@ -1,0 +1,29 @@
+app = "field-agreement-jihoon"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  STORAGE_ENGINE = "SQLITE"
+  DATA_DIR = "/data"
+  DB_FILE_PATH = "/data/app.sqlite"
+  UPLOAD_DIR = "/data/uploads"
+  BACKUP_DIR = "/data/backups"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[mounts]
+  source = "app_data"
+  destination = "/data"
+

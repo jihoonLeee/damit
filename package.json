@@ -1,0 +1,29 @@
+{
+  "name": "field-agreement-assistant-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node --test",
+    "seed:demo": "node scripts/seed-demo-data.mjs",
+    "reset:data": "node scripts/reset-data.mjs",
+    "backup:restore:local": "node scripts/local-restore-rehearsal.mjs",
+    "restore:db": "node scripts/restore-sqlite-backup.mjs",
+    "restore:uploads": "node scripts/restore-upload-backup.mjs",
+    "smoke:live": "node scripts/live-smoke.mjs",
+    "migrate:pg": "node scripts/migrate-postgres.mjs",
+    "migrate:status": "node scripts/migration-status.mjs",
+    "test:foundation": "node tests/repository-batch-a.test.js",
+    "test:auth": "node tests/auth-foundation.test.js",
+    "test:beta": "node tests/beta-workspace.test.js",
+    "test:confirm": "node tests/customer-confirmation.test.js",
+    "pg:preflight": "node scripts/postgres-preflight.mjs",
+    "env:check:staging": "node scripts/runtime-env-check.mjs --profile=staging",
+    "env:check:production": "node scripts/runtime-env-check.mjs --profile=production"
+  },
+  "dependencies": {
+    "pg": "^8.20.0"
+  }
+}

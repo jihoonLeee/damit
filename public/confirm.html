@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>고객 확인 링크</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="confirm-page">
+  <div class="page-shell confirm-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">FIELD AGREEMENT ASSISTANT</p>
+        <h1>추가 작업 설명 확인</h1>
+        <p class="hero-copy" id="confirm-hero-copy">현장 설명과 변경 금액을 확인하는 중입니다.</p>
+      </div>
+      <aside class="hero-card">
+        <h2>안내</h2>
+        <ul>
+          <li>로그인 없이 확인할 수 있습니다</li>
+          <li>열람과 확인 시각이 기록됩니다</li>
+          <li>추가 문의는 작업 담당자에게 바로 전달해주세요</li>
+        </ul>
+      </aside>
+    </header>
+
+    <main class="workspace confirm-workspace">
+      <section class="panel panel-detail confirm-panel">
+        <div id="confirm-feedback" class="feedback" aria-live="polite"></div>
+
+        <div class="card stack" id="confirm-summary-card">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">확인 대상</p>
+              <h2 id="confirm-title">로딩 중...</h2>
+            </div>
+            <span class="status-badge neutral" id="confirm-status">대기</span>
+          </div>
+          <div class="card-grid">
+            <article class="metric-card">
+              <span>원래 견적</span>
+              <strong id="confirm-original">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>변경 금액</span>
+              <strong id="confirm-revised">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>차액</span>
+              <strong id="confirm-delta">-</strong>
+            </article>
+          </div>
+          <p class="helper-text" id="confirm-meta">링크 상태를 확인하는 중입니다.</p>
+        </div>
+
+        <section class="card" id="confirm-scope-card">
+          <div class="card-header"><h3>변경 사유와 범위</h3></div>
+          <div class="scope-grid">
+            <div class="scope-card">
+              <h4>기본 포함 범위</h4>
+              <p id="confirm-scope-base">-</p>
+            </div>
+            <div class="scope-card">
+              <h4>추가 작업</h4>
+              <p id="confirm-scope-extra">-</p>
+            </div>
+          </div>
+          <p class="helper-text" id="confirm-scope-reason"></p>
+        </section>
+
+        <section class="card" id="confirm-draft-card">
+          <div class="card-header"><h3>안내 메시지</h3></div>
+          <p class="draft-box" id="confirm-draft-body">-</p>
+        </section>
+
+        <section class="card" id="confirm-photos-card">
+          <div class="card-header"><h3>현장 사진</h3></div>
+          <div id="confirm-photos" class="record-photos"></div>
+        </section>
+
+        <section class="card" id="confirm-ack-card">
+          <div class="card-header"><h3>내용 확인 남기기</h3></div>
+          <form id="confirm-ack-form" class="stack">
+            <label class="field">
+              <span>확인 메모</span>
+              <textarea id="confirmation-note" rows="4" maxlength="300" placeholder="예: 추가 작업 내용 확인했습니다"></textarea>
+            </label>
+            <button type="submit" class="primary-button" id="confirm-submit">내용 확인 완료</button>
+          </form>
+          <p class="helper-text">확인을 누르면 열람/확인 시각이 기록됩니다. 금액 동의나 진행 방식은 담당자와 최종 상의해주세요.</p>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/confirm.js"></script>
+</body>
+</html>

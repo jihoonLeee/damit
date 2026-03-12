@@ -1,0 +1,41 @@
+name: Self-Host Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SELF_HOST_SSH_KEY }}
+
+      - name: Trust server host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync repository
+        run: |
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'data/' \
+            --exclude 'output/' \
+            --exclude '.fly-config/' \
+            ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_SSH_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
+
+      - name: Deploy on server
+        run: |
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_SSH_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/deploy.sh"
+
+      - name: Smoke check on server
+        run: |
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_SSH_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/smoke.sh"

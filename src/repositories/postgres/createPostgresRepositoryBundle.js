@@ -1,0 +1,1736 @@
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+
+import pg from "pg";
+
+import { config } from "../../config.js";
+import { applyPostgresMigrations, getPostgresMigrationStatus } from "../../db/postgres-migrator.js";
+import { buildPostgresConnectionOptions } from "../../db/postgres-connection.js";
+import { HttpError } from "../../http.js";
+
+const { Pool } = pg;
+
+function normalizeValue(value) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeValue(item));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizeValue(item)]));
+  }
+  return value;
+}
+
+function normalizeRow(row) {
+  if (!row) {
+    return row;
+  }
+  return normalizeValue(row);
+}
+
+function normalizeRows(rows = []) {
+  return rows.map((row) => normalizeRow(row));
+}
+
+function toCompanySummary(row) {
+  return {
+    id: row.company_id,
+    name: row.company_name,
+    role: row.role,
+    membershipId: row.membership_id
+  };
+}
+
+function toAuditLog(row) {
+  const normalized = normalizeRow(row);
+  return {
+    id: normalized.id,
+    companyId: normalized.company_id,
+    actorUserId: normalized.actor_user_id,
+    actorType: normalized.actor_type,
+    action: normalized.action,
+    resourceType: normalized.resource_type,
+    resourceId: normalized.resource_id,
+    requestId: normalized.request_id,
+    payloadJson: normalized.payload_json || null,
+    createdAt: normalized.created_at
+  };
+}
+
+function toJobCaseListItem(row) {
+  const normalized = normalizeRow(row);
+  return {
+    id: normalized.id,
+    customerLabel: normalized.customer_label,
+    siteLabel: normalized.site_label,
+    originalQuoteAmount: normalized.original_quote_amount,
+    revisedQuoteAmount: normalized.revised_quote_amount,
+    quoteDeltaAmount: normalized.quote_delta_amount,
+    primaryReason: normalized.primary_reason || null,
+    secondaryReason: normalized.secondary_reason || null,
+    currentStatus: normalized.current_status || "UNEXPLAINED",
+    hasAgreementRecord: Boolean(normalized.has_agreement_record),
+    updatedAt: normalized.updated_at
+  };
+}
+
+function toTimelineEvent(row) {
+  const normalized = normalizeRow(row);
+  return {
+    id: normalized.id,
+    job_case_id: normalized.job_case_id,
+    company_id: normalized.company_id,
+    actor_user_id: normalized.actor_user_id || null,
+    event_type: normalized.event_type,
+    summary: normalized.summary,
+    payload_json: normalized.payload_json || null,
+    created_at: normalized.created_at
+  };
+}
+
+function createRepositoryId(prefix) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function plusHours(hours) {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+}
+
+function plusMinutes(minutes) {
+  return new Date(Date.now() + minutes * 60 * 1000).toISOString();
+}
+
+function plusDays(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function toCustomerConfirmationLink(row, token) {
+  const normalized = normalizeRow(row);
+  if (!normalized) {
+    return null;
+  }
+
+  const payload = {
+    id: normalized.id,
+    jobCaseId: normalized.job_case_id,
+    companyId: normalized.company_id || null,
+    createdByUserId: normalized.created_by_user_id || null,
+    status: normalized.status,
+    expiresAt: normalized.expires_at,
+    viewedAt: normalized.viewed_at || null,
+    confirmedAt: normalized.confirmed_at || null,
+    confirmationNote: normalized.confirmation_note || null,
+    requestIp: normalized.request_ip || null,
+    userAgent: normalized.user_agent || null,
+    revokedAt: normalized.revoked_at || null,
+    createdAt: normalized.created_at,
+    updatedAt: normalized.updated_at
+  };
+
+  if (token !== undefined) {
+    payload.token = token;
+  }
+
+  return payload;
+}
+
+async function appendCustomerConfirmationEvent(client, { linkId, eventType, requestIp, userAgent, confirmationNote, createdAt }) {
+  await client.query(
+    `
+      INSERT INTO customer_confirmation_events (
+        id, link_id, event_type, request_ip, user_agent, confirmation_note, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `,
+    [
+      createRepositoryId("cce"),
+      linkId,
+      eventType,
+      requestIp || null,
+      userAgent || null,
+      confirmationNote || null,
+      createdAt || new Date().toISOString()
+    ]
+  );
+}
+
+async function getCustomerConfirmationRowForUpdate(client, tokenHash) {
+  const result = await client.query(
+    `SELECT * FROM customer_confirmation_links WHERE token_hash = $1 LIMIT 1 FOR UPDATE`,
+    [tokenHash]
+  );
+  return normalizeRow(result.rows[0] || null);
+}
+
+async function assertAvailableCustomerConfirmation(client, row, codePrefix = "CUSTOMER_CONFIRMATION") {
+  if (!row) {
+    throw new HttpError(404, `${codePrefix}_NOT_FOUND`, "?? ?? ??? ?? ? ???");
+  }
+
+  if (row.status === "REVOKED") {
+    throw new HttpError(410, `${codePrefix}_REVOKED`, "? ??? ? ?? ??? ? ???");
+  }
+
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    if (row.status !== "EXPIRED") {
+      const timestamp = new Date().toISOString();
+      await client.query(
+        `
+          UPDATE customer_confirmation_links
+          SET status = 'EXPIRED', updated_at = $2
+          WHERE id = $1
+        `,
+        [row.id, timestamp]
+      );
+      await appendCustomerConfirmationEvent(client, {
+        linkId: row.id,
+        eventType: "EXPIRED",
+        createdAt: timestamp
+      });
+    }
+
+    throw new HttpError(410, `${codePrefix}_EXPIRED`, "?? ?? ??? ??????");
+  }
+}
+function buildListByScopeQuery(scope = {}) {
+  const params = [];
+  const conditions = [];
+
+  const pushParam = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  if (scope.companyId) {
+    conditions.push(`jc.company_id = ${pushParam(scope.companyId)}`);
+  }
+
+  const role = String(scope.role || "OWNER").toUpperCase();
+  if (role === "STAFF") {
+    if (!scope.actorUserId) {
+      conditions.push("1 = 0");
+    } else {
+      const actorUserId = pushParam(scope.actorUserId);
+      conditions.push(`(
+        jc.created_by_user_id = ${actorUserId}
+        OR jc.assigned_user_id = ${actorUserId}
+        OR jc.visibility = 'TEAM_SHARED'
+      )`);
+    }
+  }
+
+  const normalizedStatus = String(scope.status || "ALL").toUpperCase();
+  if (normalizedStatus !== "ALL") {
+    conditions.push(`COALESCE(latest_agreement.status, 'UNEXPLAINED') = ${pushParam(normalizedStatus)}`);
+  }
+
+  const normalizedQuery = String(scope.query || "").trim();
+  if (normalizedQuery) {
+    const pattern = pushParam(`%${normalizedQuery}%`);
+    conditions.push(`(
+      jc.customer_label ILIKE ${pattern}
+      OR jc.site_label ILIKE ${pattern}
+      OR COALESCE(jc.contact_memo, '') ILIKE ${pattern}
+    )`);
+  }
+
+  const limit = Number.parseInt(scope.limit || 100, 10);
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  return {
+    sql: `
+      SELECT
+        jc.id,
+        jc.customer_label,
+        jc.site_label,
+        jc.original_quote_amount,
+        jc.revised_quote_amount,
+        jc.quote_delta_amount,
+        jc.updated_at,
+        latest_record.primary_reason,
+        latest_record.secondary_reason,
+        COALESCE(latest_agreement.status, 'UNEXPLAINED') AS current_status,
+        (latest_agreement.id IS NOT NULL) AS has_agreement_record
+      FROM job_cases jc
+      LEFT JOIN LATERAL (
+        SELECT fr.primary_reason, fr.secondary_reason
+        FROM field_records fr
+        WHERE fr.job_case_id = jc.id
+        ORDER BY fr.created_at DESC
+        LIMIT 1
+      ) latest_record ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT ar.id, ar.status
+        FROM agreement_records ar
+        WHERE ar.job_case_id = jc.id
+        ORDER BY ar.created_at DESC
+        LIMIT 1
+      ) latest_agreement ON TRUE
+      ${whereClause}
+      ORDER BY jc.updated_at DESC
+      LIMIT ${pushParam(safeLimit)}
+    `,
+    params
+  };
+}
+
+function buildJobCaseAccessCondition(scope = {}, alias = "jc") {
+  const params = [];
+  const conditions = [];
+
+  const pushParam = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  if (scope.companyId) {
+    conditions.push(`${alias}.company_id = ${pushParam(scope.companyId)}`);
+  }
+
+  const role = String(scope.role || "OWNER").toUpperCase();
+  if (role === "STAFF") {
+    if (!scope.actorUserId) {
+      conditions.push("1 = 0");
+    } else {
+      const actorUserId = pushParam(scope.actorUserId);
+      conditions.push(`(
+        ${alias}.created_by_user_id = ${actorUserId}
+        OR ${alias}.assigned_user_id = ${actorUserId}
+        OR ${alias}.visibility = 'TEAM_SHARED'
+      )`);
+    }
+  }
+
+  return {
+    params,
+    sql: conditions.length > 0 ? ` AND ${conditions.join(" AND ")}` : ""
+  };
+}
+
+async function withTransaction(pool, work) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function loadJobCaseForWrite(client, jobCaseId) {
+  const result = await client.query(
+    `SELECT * FROM job_cases WHERE id = $1 LIMIT 1 FOR UPDATE`,
+    [jobCaseId]
+  );
+  const jobCase = normalizeRow(result.rows[0] || null);
+  if (!jobCase) {
+    throw new Error(`Job case not found: ${jobCaseId}`);
+  }
+  return jobCase;
+}
+
+async function loadFieldRecordForWrite(client, fieldRecordId) {
+  const result = await client.query(
+    `SELECT * FROM field_records WHERE id = $1 LIMIT 1 FOR UPDATE`,
+    [fieldRecordId]
+  );
+  const fieldRecord = normalizeRow(result.rows[0] || null);
+  if (!fieldRecord) {
+    throw new Error(`Field record not found: ${fieldRecordId}`);
+  }
+  return fieldRecord;
+}
+
+function maskDatabaseUrl(databaseUrl) {
+  if (!databaseUrl) {
+    return "";
+  }
+
+  return databaseUrl.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@');
+}
+
+async function exportOperationalSnapshot(pool) {
+  const tableQueries = [
+    ["jobCases", "SELECT * FROM job_cases ORDER BY created_at ASC"],
+    ["fieldRecords", "SELECT * FROM field_records ORDER BY created_at ASC"],
+    ["fieldRecordPhotos", "SELECT * FROM field_record_photos ORDER BY created_at ASC, sort_order ASC"],
+    ["scopeComparisons", "SELECT * FROM scope_comparisons ORDER BY updated_at ASC"],
+    ["messageDrafts", "SELECT * FROM message_drafts ORDER BY created_at ASC"],
+    ["agreementRecords", "SELECT * FROM agreement_records ORDER BY created_at ASC"],
+    ["timelineEvents", "SELECT * FROM timeline_events ORDER BY created_at ASC"],
+    ["auditLogs", "SELECT * FROM audit_logs ORDER BY created_at ASC"],
+    ["customerConfirmationLinks", "SELECT * FROM customer_confirmation_links ORDER BY created_at ASC"],
+    ["customerConfirmationEvents", "SELECT * FROM customer_confirmation_events ORDER BY created_at ASC"]
+  ];
+
+  const snapshot = {};
+  for (const [key, sql] of tableQueries) {
+    const result = await pool.query(sql);
+    snapshot[key] = normalizeRows(result.rows);
+  }
+  return snapshot;
+}
+async function listActiveMembershipRows(client, userId) {
+  const result = await client.query(
+    `
+      SELECT
+        memberships.id AS membership_id,
+        memberships.company_id,
+        memberships.role,
+        companies.name AS company_name
+      FROM memberships
+      JOIN companies ON companies.id = memberships.company_id
+      WHERE memberships.user_id = $1
+        AND memberships.status = 'ACTIVE'
+        AND companies.status = 'ACTIVE'
+      ORDER BY memberships.created_at ASC
+    `,
+    [userId]
+  );
+  return normalizeRows(result.rows);
+}
+
+async function buildSessionPayloadFromClient(client, session) {
+  const normalizedSession = normalizeRow(session);
+  if (!normalizedSession || normalizedSession.revoked_at) {
+    return null;
+  }
+  if (new Date(normalizedSession.expires_at).getTime() < Date.now()) {
+    return null;
+  }
+
+  const userResult = await client.query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [normalizedSession.user_id]);
+  const membershipResult = await client.query(
+    `
+      SELECT memberships.*, companies.name AS company_name
+      FROM memberships
+      JOIN companies ON companies.id = memberships.company_id
+      WHERE memberships.id = $1
+      LIMIT 1
+    `,
+    [normalizedSession.membership_id]
+  );
+
+  const user = normalizeRow(userResult.rows[0] || null);
+  const membership = normalizeRow(membershipResult.rows[0] || null);
+  if (!user || !membership) {
+    return null;
+  }
+
+  return {
+    sessionId: normalizedSession.id,
+    userId: user.id,
+    email: user.email,
+    displayName: user.display_name,
+    companyId: membership.company_id,
+    companyName: membership.company_name,
+    role: membership.role,
+    membershipId: membership.id,
+    expiresAt: normalizedSession.expires_at,
+    companies: (await listActiveMembershipRows(client, user.id)).map((row) => toCompanySummary(row))
+  };
+}
+
+async function createAuthSession(client, { userId, membershipId, companyId }) {
+  const sessionId = createRepositoryId('session');
+  const refreshToken = crypto.randomBytes(24).toString('base64url');
+  const timestamp = new Date().toISOString();
+  await client.query(
+    `
+      INSERT INTO sessions (
+        id, user_id, company_id, membership_id, refresh_token_hash,
+        last_seen_at, expires_at, revoked_at, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `,
+    [
+      sessionId,
+      userId,
+      companyId,
+      membershipId,
+      sha256(refreshToken),
+      timestamp,
+      plusDays(30),
+      null,
+      timestamp
+    ]
+  );
+
+  return {
+    sessionId,
+    refreshToken
+  };
+}
+
+async function resolveInvitationForAuth(client, invitationToken, challengeEmail, userId) {
+  if (!invitationToken) {
+    return null;
+  }
+
+  const invitationResult = await client.query(
+    `
+      SELECT invitations.*, companies.name AS company_name
+      FROM invitations
+      JOIN companies ON companies.id = invitations.company_id
+      WHERE invitations.token_hash = $1
+      LIMIT 1
+      FOR UPDATE
+    `,
+    [sha256(invitationToken)]
+  );
+  const invitation = normalizeRow(invitationResult.rows[0] || null);
+
+  if (!invitation) {
+    throw new HttpError(404, 'INVITATION_NOT_FOUND', '?? ??? ?? ? ???');
+  }
+  if (invitation.status !== 'ISSUED') {
+    throw new HttpError(409, 'INVITATION_NOT_AVAILABLE', '??? ? ?? ?? ????');
+  }
+  if (new Date(invitation.expires_at).getTime() < Date.now()) {
+    throw new HttpError(410, 'INVITATION_EXPIRED', '?? ??? ?????');
+  }
+  if (invitation.email !== challengeEmail) {
+    throw new HttpError(403, 'INVITATION_EMAIL_MISMATCH', '???? ???? ??? ???? ????');
+  }
+
+  const membershipResult = await client.query(
+    `SELECT * FROM memberships WHERE company_id = $1 AND user_id = $2 LIMIT 1 FOR UPDATE`,
+    [invitation.company_id, userId]
+  );
+  const existingMembership = normalizeRow(membershipResult.rows[0] || null);
+  const timestamp = new Date().toISOString();
+
+  if (existingMembership && existingMembership.status === 'ACTIVE') {
+    await client.query(`UPDATE invitations SET status = 'ACCEPTED', accepted_at = $1 WHERE id = $2`, [timestamp, invitation.id]);
+    return {
+      membershipId: existingMembership.id,
+      companyId: invitation.company_id,
+      companyName: invitation.company_name,
+      role: existingMembership.role
+    };
+  }
+
+  const membershipId = existingMembership?.id || createRepositoryId('membership');
+  if (existingMembership) {
+    await client.query(
+      `
+        UPDATE memberships
+        SET role = $1, status = 'ACTIVE', invited_by_user_id = $2, joined_at = $3, updated_at = $4
+        WHERE id = $5
+      `,
+      [invitation.role, invitation.invited_by_user_id, timestamp, timestamp, membershipId]
+    );
+  } else {
+    await client.query(
+      `
+        INSERT INTO memberships (
+          id, company_id, user_id, role, status, invited_by_user_id, joined_at, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, $8)
+      `,
+      [membershipId, invitation.company_id, userId, invitation.role, invitation.invited_by_user_id, timestamp, timestamp, timestamp]
+    );
+  }
+
+  await client.query(`UPDATE invitations SET status = 'ACCEPTED', accepted_at = $1 WHERE id = $2`, [timestamp, invitation.id]);
+  return {
+    membershipId,
+    companyId: invitation.company_id,
+    companyName: invitation.company_name,
+    role: invitation.role
+  };
+}
+
+export function createPostgresRepositoryBundle({
+  databaseUrl,
+  sslMode,
+  sslRequire,
+  sslCaPath,
+  applicationName,
+  maxPoolSize,
+  pool: providedPool = null
+}) {
+  if (!databaseUrl && !providedPool) {
+    throw new Error("DATABASE_URL is required for the Postgres repository bundle.");
+  }
+
+  const connectionOptions = providedPool
+    ? null
+    : buildPostgresConnectionOptions({
+        databaseUrl,
+        sslMode,
+        sslRequire,
+        sslCaPath,
+        applicationName,
+        maxPoolSize
+      });
+  const pool = providedPool || new Pool(connectionOptions);
+  const ownsPool = !providedPool;
+
+  return {
+    engine: "POSTGRES",
+    pool,
+    systemRepository: {
+      getStorageSummary: async () => {
+        const counts = await Promise.all([
+          pool.query("SELECT COUNT(*)::int AS count FROM job_cases"),
+          pool.query("SELECT COUNT(*)::int AS count FROM field_records"),
+          pool.query("SELECT COUNT(*)::int AS count FROM agreement_records")
+        ]);
+
+        return {
+          storageEngine: "POSTGRES",
+          objectStorageProvider: config.objectStorageProvider,
+          databaseUrlMasked: maskDatabaseUrl(databaseUrl),
+          backupDir: config.backupDir,
+          updatedAt: new Date().toISOString(),
+          counts: {
+            jobCases: counts[0].rows[0]?.count || 0,
+            fieldRecords: counts[1].rows[0]?.count || 0,
+            agreements: counts[2].rows[0]?.count || 0
+          }
+        };
+      },
+      createBackup: async (label = "manual") => {
+        await fs.mkdir(config.backupDir, { recursive: true });
+        const safeLabel = String(label).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 40) || "manual";
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const fileName = `postgres-${safeLabel}-${stamp}.json`;
+        const filePath = path.join(config.backupDir, fileName);
+        const storage = await exportOperationalSnapshot(pool);
+        const payload = {
+          storageEngine: "POSTGRES",
+          databaseUrlMasked: maskDatabaseUrl(databaseUrl),
+          createdAt: new Date().toISOString(),
+          tables: storage
+        };
+        await fs.writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
+        return {
+          fileName,
+          filePath,
+          relativePath: path.relative(config.rootDir, filePath)
+        };
+      },
+      resetAllData: async () => {
+        await withTransaction(pool, async (client) => {
+          await client.query(`
+            TRUNCATE TABLE
+              customer_confirmation_events,
+              customer_confirmation_links,
+              audit_logs,
+              timeline_events,
+              agreement_records,
+              message_drafts,
+              scope_comparisons,
+              field_record_photos,
+              field_records,
+              job_cases
+            RESTART IDENTITY CASCADE
+          `);
+        });
+
+        const counts = await Promise.all([
+          pool.query("SELECT COUNT(*)::int AS count FROM job_cases"),
+          pool.query("SELECT COUNT(*)::int AS count FROM field_records"),
+          pool.query("SELECT COUNT(*)::int AS count FROM agreement_records")
+        ]);
+
+        return {
+          storageEngine: "POSTGRES",
+          counts: {
+            jobCases: counts[0].rows[0]?.count || 0,
+            fieldRecords: counts[1].rows[0]?.count || 0,
+            agreements: counts[2].rows[0]?.count || 0
+          }
+        };
+      }
+    },
+    jobCaseRepository: {
+      listByScope: async (scope = {}) => {
+        const query = buildListByScopeQuery(scope);
+        const result = await pool.query(query.sql, query.params);
+        return result.rows.map((row) => toJobCaseListItem(row));
+      },
+      getDetailById: async (jobCaseId, scope = {}) => {
+        const access = buildJobCaseAccessCondition(scope, "jc");
+        const jobCaseResult = await pool.query(
+          `
+            SELECT jc.*
+            FROM job_cases jc
+            WHERE jc.id = $1${access.sql}
+            LIMIT 1
+          `,
+          [jobCaseId, ...access.params]
+        );
+
+        const jobCase = normalizeRow(jobCaseResult.rows[0] || null);
+        if (!jobCase) {
+          return null;
+        }
+
+        const [fieldRecords, agreements, drafts, scopeComparisons, timelineEvents] = await Promise.all([
+          pool.query(`SELECT * FROM field_records WHERE job_case_id = $1 ORDER BY created_at ASC`, [jobCaseId]),
+          pool.query(`SELECT * FROM agreement_records WHERE job_case_id = $1 ORDER BY created_at ASC`, [jobCaseId]),
+          pool.query(`SELECT * FROM message_drafts WHERE job_case_id = $1 ORDER BY created_at ASC`, [jobCaseId]),
+          pool.query(`SELECT * FROM scope_comparisons WHERE job_case_id = $1 ORDER BY updated_at ASC`, [jobCaseId]),
+          pool.query(`SELECT * FROM timeline_events WHERE job_case_id = $1 ORDER BY created_at ASC`, [jobCaseId])
+        ]);
+
+        return {
+          jobCase,
+          fieldRecords: normalizeRows(fieldRecords.rows),
+          agreements: normalizeRows(agreements.rows),
+          drafts: normalizeRows(drafts.rows),
+          scopeComparisons: normalizeRows(scopeComparisons.rows),
+          timelineEvents: normalizeRows(timelineEvents.rows)
+        };
+      },
+      create: async ({ jobCase }) => {
+        const result = await pool.query(
+          `
+            INSERT INTO job_cases (
+              id, company_id, owner_id, created_by_user_id, assigned_user_id, updated_by_user_id,
+              visibility, customer_label, contact_memo, site_label, original_quote_amount,
+              revised_quote_amount, quote_delta_amount, current_status, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            RETURNING id, current_status, original_quote_amount, revised_quote_amount, quote_delta_amount, created_at, visibility
+          `,
+          [
+            jobCase.id,
+            jobCase.company_id,
+            jobCase.owner_id || null,
+            jobCase.created_by_user_id,
+            jobCase.assigned_user_id || null,
+            jobCase.updated_by_user_id || null,
+            jobCase.visibility || "PRIVATE_ASSIGNED",
+            jobCase.customer_label,
+            jobCase.contact_memo || null,
+            jobCase.site_label,
+            jobCase.original_quote_amount,
+            jobCase.revised_quote_amount ?? null,
+            jobCase.quote_delta_amount ?? null,
+            jobCase.current_status,
+            jobCase.created_at,
+            jobCase.updated_at
+          ]
+        );
+
+        const saved = normalizeRow(result.rows[0]);
+        return {
+          id: saved.id,
+          currentStatus: saved.current_status,
+          originalQuoteAmount: saved.original_quote_amount,
+          revisedQuoteAmount: saved.revised_quote_amount ?? null,
+          quoteDeltaAmount: saved.quote_delta_amount ?? null,
+          createdAt: saved.created_at,
+          visibility: saved.visibility || "PRIVATE_ASSIGNED"
+        };
+      },
+      saveQuoteRevision: async ({ jobCaseId, actorUserId, revisedQuoteAmount, scopeComparison, updatedAt }) => {
+        return withTransaction(pool, async (client) => {
+          const jobCase = await loadJobCaseForWrite(client, jobCaseId);
+          const timestamp = updatedAt || new Date().toISOString();
+          const quoteDeltaAmount = revisedQuoteAmount - jobCase.original_quote_amount;
+
+          await client.query(
+            `
+              UPDATE job_cases
+              SET revised_quote_amount = $2,
+                  quote_delta_amount = $3,
+                  updated_at = $4,
+                  updated_by_user_id = $5
+              WHERE id = $1
+            `,
+            [jobCaseId, revisedQuoteAmount, quoteDeltaAmount, timestamp, actorUserId || null]
+          );
+
+          const existingComparison = await client.query(
+            `SELECT id FROM scope_comparisons WHERE job_case_id = $1 ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
+            [jobCaseId]
+          );
+
+          if (existingComparison.rows[0]?.id) {
+            await client.query(
+              `
+                UPDATE scope_comparisons
+                SET base_scope_summary = $2,
+                    extra_work_summary = $3,
+                    reason_why_extra = $4,
+                    updated_at = $5
+                WHERE id = $1
+              `,
+              [
+                existingComparison.rows[0].id,
+                scopeComparison.baseScopeSummary,
+                scopeComparison.extraWorkSummary,
+                scopeComparison.reasonWhyExtra,
+                timestamp
+              ]
+            );
+          } else {
+            await client.query(
+              `
+                INSERT INTO scope_comparisons (
+                  id, job_case_id, base_scope_summary, extra_work_summary, reason_why_extra, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+              `,
+              [
+                `scope_${crypto.randomUUID()}`,
+                jobCaseId,
+                scopeComparison.baseScopeSummary,
+                scopeComparison.extraWorkSummary,
+                scopeComparison.reasonWhyExtra,
+                timestamp
+              ]
+            );
+          }
+
+          return {
+            jobCaseId,
+            originalQuoteAmount: jobCase.original_quote_amount,
+            revisedQuoteAmount,
+            quoteDeltaAmount,
+            updatedAt: timestamp,
+            scopeComparison: {
+              baseScopeSummary: scopeComparison.baseScopeSummary,
+              extraWorkSummary: scopeComparison.extraWorkSummary,
+              reasonWhyExtra: scopeComparison.reasonWhyExtra
+            }
+          };
+        });
+      },
+      upsertDraftMessage: async ({ jobCaseId, companyId, actorUserId, tone, body, timestamp }) => {
+        return withTransaction(pool, async (client) => {
+          await loadJobCaseForWrite(client, jobCaseId);
+          const savedAt = timestamp || new Date().toISOString();
+          const existingDraft = await client.query(
+            `SELECT id, created_at FROM message_drafts WHERE job_case_id = $1 ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
+            [jobCaseId]
+          );
+
+          let draftId = existingDraft.rows[0]?.id || `draft_${crypto.randomUUID()}`;
+          let createdAt = normalizeRow(existingDraft.rows[0])?.created_at || savedAt;
+
+          if (existingDraft.rows[0]?.id) {
+            await client.query(
+              `
+                UPDATE message_drafts
+                SET tone = $2,
+                    body = $3,
+                    updated_at = $4,
+                    created_by_user_id = COALESCE(created_by_user_id, $5)
+                WHERE id = $1
+              `,
+              [draftId, tone, body, savedAt, actorUserId || null]
+            );
+          } else {
+            await client.query(
+              `
+                INSERT INTO message_drafts (
+                  id, job_case_id, created_by_user_id, tone, body, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+              `,
+              [draftId, jobCaseId, actorUserId || null, tone, body, savedAt, savedAt]
+            );
+          }
+
+          await client.query(
+            `UPDATE job_cases SET updated_at = $2, updated_by_user_id = $3 WHERE id = $1`,
+            [jobCaseId, savedAt, actorUserId || null]
+          );
+
+          return {
+            id: draftId,
+            jobCaseId,
+            tone,
+            body,
+            createdAt,
+            updatedAt: savedAt
+          };
+        });
+      },
+      createAgreementRecord: async ({
+        jobCaseId,
+        companyId,
+        actorUserId,
+        status,
+        confirmationChannel,
+        confirmedAt,
+        confirmedAmount,
+        customerResponseNote,
+        createdAt
+      }) => {
+        return withTransaction(pool, async (client) => {
+          await loadJobCaseForWrite(client, jobCaseId);
+          const timestamp = createdAt || new Date().toISOString();
+          const agreementId = `agreement_${crypto.randomUUID()}`;
+          const effectiveConfirmedAt = confirmedAt || timestamp;
+
+          await client.query(
+            `
+              INSERT INTO agreement_records (
+                id, company_id, job_case_id, created_by_user_id, status,
+                confirmation_channel, confirmed_at, confirmed_amount, customer_response_note, created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `,
+            [
+              agreementId,
+              companyId || null,
+              jobCaseId,
+              actorUserId || null,
+              status,
+              confirmationChannel,
+              effectiveConfirmedAt,
+              confirmedAmount == null ? null : confirmedAmount,
+              customerResponseNote || null,
+              timestamp
+            ]
+          );
+
+          await client.query(
+            `
+              UPDATE job_cases
+              SET current_status = $2,
+                  updated_at = $3,
+                  updated_by_user_id = $4
+              WHERE id = $1
+            `,
+            [jobCaseId, status, timestamp, actorUserId || null]
+          );
+
+          return {
+            id: agreementId,
+            jobCaseId,
+            status,
+            confirmationChannel,
+            confirmedAt: effectiveConfirmedAt,
+            confirmedAmount: confirmedAmount == null ? null : confirmedAmount,
+            customerResponseNote: customerResponseNote || null,
+            currentStatus: status,
+            createdAt: timestamp
+          };
+        });
+      }
+    },
+    fieldRecordRepository: {
+      listByJobCaseId: async (jobCaseId) => {
+        const result = await pool.query(
+          `SELECT * FROM field_records WHERE job_case_id = $1 ORDER BY created_at ASC`,
+          [jobCaseId]
+        );
+        return normalizeRows(result.rows);
+      },
+      getById: async (fieldRecordId, scope = {}) => {
+        const conditions = ["id = $1"];
+        const params = [fieldRecordId];
+        if (scope.companyId) {
+          params.push(scope.companyId);
+          conditions.push(`company_id = $${params.length}`);
+        }
+        const result = await pool.query(
+          `SELECT * FROM field_records WHERE ${conditions.join(" AND ")} LIMIT 1`,
+          params
+        );
+        return normalizeRow(result.rows[0] || null);
+      },
+      createCapturedRecord: async ({ fieldRecord, photos }) => {
+        return withTransaction(pool, async (client) => {
+          await client.query(
+            `
+              INSERT INTO field_records (
+                id, company_id, owner_id, created_by_user_id, job_case_id,
+                primary_reason, secondary_reason, note, status, created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `,
+            [
+              fieldRecord.id,
+              fieldRecord.company_id,
+              fieldRecord.owner_id || null,
+              fieldRecord.created_by_user_id || null,
+              fieldRecord.job_case_id || null,
+              fieldRecord.primary_reason,
+              fieldRecord.secondary_reason || null,
+              fieldRecord.note || null,
+              fieldRecord.status,
+              fieldRecord.created_at
+            ]
+          );
+
+          for (const photo of photos || []) {
+            await client.query(
+              `
+                INSERT INTO field_record_photos (
+                  id, field_record_id, storage_provider, object_key, public_url, url, sort_order, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              `,
+              [
+                photo.id,
+                photo.field_record_id,
+                photo.storage_provider,
+                photo.object_key || null,
+                photo.public_url || null,
+                photo.url,
+                photo.sort_order,
+                photo.created_at
+              ]
+            );
+          }
+
+          return {
+            id: fieldRecord.id,
+            jobCaseId: fieldRecord.job_case_id || null,
+            primaryReason: fieldRecord.primary_reason,
+            secondaryReason: fieldRecord.secondary_reason,
+            note: fieldRecord.note,
+            status: fieldRecord.status,
+            photos: (photos || []).map((photo) => ({
+              id: photo.id,
+              url: photo.public_url || photo.url
+            })),
+            createdAt: fieldRecord.created_at
+          };
+        });
+      },
+      linkToJobCase: async ({ fieldRecordId, jobCaseId, actorUserId, linkedAt }) => {
+        return withTransaction(pool, async (client) => {
+          const fieldRecord = await loadFieldRecordForWrite(client, fieldRecordId);
+          if (fieldRecord.status === "LINKED") {
+            throw new Error(`Field record already linked: ${fieldRecordId}`);
+          }
+          await loadJobCaseForWrite(client, jobCaseId);
+          const timestamp = linkedAt || new Date().toISOString();
+
+          await client.query(
+            `
+              UPDATE field_records
+              SET job_case_id = $2,
+                  status = 'LINKED'
+              WHERE id = $1
+            `,
+            [fieldRecordId, jobCaseId]
+          );
+          await client.query(
+            `
+              UPDATE job_cases
+              SET updated_at = $2,
+                  updated_by_user_id = $3
+              WHERE id = $1
+            `,
+            [jobCaseId, timestamp, actorUserId || null]
+          );
+
+          return {
+            fieldRecordId,
+            jobCaseId,
+            status: "LINKED",
+            linkedAt: timestamp,
+            primaryReason: fieldRecord.primary_reason,
+            secondaryReason: fieldRecord.secondary_reason
+          };
+        });
+      }
+    },
+    customerConfirmationRepository: {
+      createLink: async ({ jobCaseId, companyId, createdByUserId, expiresInHours = 72 }) => {
+        return withTransaction(pool, async (client) => {
+          const jobCase = await loadJobCaseForWrite(client, jobCaseId);
+          const boundedHours = Number.isInteger(expiresInHours) ? Math.min(Math.max(expiresInHours, 1), 168) : 72;
+          const timestamp = new Date().toISOString();
+          const token = crypto.randomBytes(24).toString("base64url");
+          const tokenHash = sha256(token);
+          const linkId = createRepositoryId("ccl");
+          const resolvedCompanyId = companyId || jobCase.company_id || null;
+          const expiresAt = plusHours(boundedHours);
+
+          await client.query(
+            `
+              UPDATE customer_confirmation_links
+              SET status = 'REVOKED', revoked_at = $2, updated_at = $2
+              WHERE job_case_id = $1 AND status IN ('ISSUED', 'VIEWED')
+            `,
+            [jobCaseId, timestamp]
+          );
+
+          await client.query(
+            `
+              INSERT INTO customer_confirmation_links (
+                id, company_id, job_case_id, token_hash, status, expires_at, revoked_at,
+                created_by_user_id, viewed_at, confirmed_at, confirmation_note, request_ip, user_agent, created_at, updated_at
+              ) VALUES ($1, $2, $3, $4, 'ISSUED', $5, NULL, $6, NULL, NULL, NULL, NULL, NULL, $7, $7)
+            `,
+            [linkId, resolvedCompanyId, jobCaseId, tokenHash, expiresAt, createdByUserId || null, timestamp]
+          );
+
+          await appendCustomerConfirmationEvent(client, {
+            linkId,
+            eventType: 'ISSUED',
+            createdAt: timestamp
+          });
+
+          return toCustomerConfirmationLink({
+            id: linkId,
+            company_id: resolvedCompanyId,
+            job_case_id: jobCaseId,
+            created_by_user_id: createdByUserId || null,
+            status: 'ISSUED',
+            expires_at: expiresAt,
+            revoked_at: null,
+            viewed_at: null,
+            confirmed_at: null,
+            confirmation_note: null,
+            request_ip: null,
+            user_agent: null,
+            created_at: timestamp,
+            updated_at: timestamp
+          }, token);
+        });
+      },
+      getLatestByJobCaseId: async (jobCaseId) => {
+        const result = await pool.query(
+          `
+            SELECT *
+            FROM customer_confirmation_links
+            WHERE job_case_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+          `,
+          [jobCaseId]
+        );
+        return toCustomerConfirmationLink(result.rows[0] || null);
+      },
+      getViewByToken: async ({ token, requestIp, userAgent }) => {
+        return withTransaction(pool, async (client) => {
+          const row = await getCustomerConfirmationRowForUpdate(client, sha256(token));
+          await assertAvailableCustomerConfirmation(client, row, 'CUSTOMER_CONFIRMATION');
+
+          if (!row.viewed_at) {
+            const timestamp = new Date().toISOString();
+            const nextStatus = row.status === 'ISSUED' ? 'VIEWED' : row.status;
+            await client.query(
+              `
+                UPDATE customer_confirmation_links
+                SET status = $2,
+                    viewed_at = $3,
+                    request_ip = COALESCE(request_ip, $4),
+                    user_agent = COALESCE(user_agent, $5),
+                    updated_at = $3
+                WHERE id = $1
+              `,
+              [row.id, nextStatus, timestamp, requestIp || null, userAgent || null]
+            );
+            await appendCustomerConfirmationEvent(client, {
+              linkId: row.id,
+              eventType: 'VIEWED',
+              requestIp,
+              userAgent,
+              createdAt: timestamp
+            });
+
+            return toCustomerConfirmationLink({
+              ...row,
+              status: nextStatus,
+              viewed_at: timestamp,
+              request_ip: row.request_ip || requestIp || null,
+              user_agent: row.user_agent || userAgent || null,
+              updated_at: timestamp
+            });
+          }
+
+          return toCustomerConfirmationLink(row);
+        });
+      },
+      acknowledge: async ({ token, note, requestIp, userAgent }) => {
+        return withTransaction(pool, async (client) => {
+          const row = await getCustomerConfirmationRowForUpdate(client, sha256(token));
+          await assertAvailableCustomerConfirmation(client, row, 'CUSTOMER_CONFIRMATION');
+
+          if (row.confirmed_at || row.status === 'CONFIRMED') {
+            throw new HttpError(409, 'CUSTOMER_CONFIRMATION_ALREADY_ACKNOWLEDGED', '?? ?? ??? ??? ????');
+          }
+
+          const timestamp = new Date().toISOString();
+          await client.query(
+            `
+              UPDATE customer_confirmation_links
+              SET status = 'CONFIRMED',
+                  viewed_at = COALESCE(viewed_at, $2),
+                  confirmed_at = $2,
+                  confirmation_note = $3,
+                  request_ip = $4,
+                  user_agent = $5,
+                  updated_at = $2
+              WHERE id = $1
+            `,
+            [row.id, timestamp, note || null, requestIp || null, userAgent || null]
+          );
+
+          await appendCustomerConfirmationEvent(client, {
+            linkId: row.id,
+            eventType: 'ACKNOWLEDGED',
+            requestIp,
+            userAgent,
+            confirmationNote: note || null,
+            createdAt: timestamp
+          });
+
+          return toCustomerConfirmationLink({
+            ...row,
+            status: 'CONFIRMED',
+            viewed_at: row.viewed_at || timestamp,
+            confirmed_at: timestamp,
+            confirmation_note: note || null,
+            request_ip: requestIp || null,
+            user_agent: userAgent || null,
+            updated_at: timestamp
+          });
+        });
+      }
+    },
+    authRepository: {
+      issueChallenge: async ({ email, token, requestIp, deliveryProvider, deliveryStatus }) => {
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        const recentResult = await pool.query(
+          `SELECT created_at FROM login_challenges WHERE email = $1 ORDER BY created_at DESC LIMIT 1`,
+          [normalizedEmail]
+        );
+        const recent = normalizeRow(recentResult.rows[0] || null);
+        if (recent) {
+          const elapsed = Date.now() - new Date(recent.created_at).getTime();
+          if (elapsed < 60 * 1000) {
+            throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '?? ? ?? ??????');
+          }
+        }
+
+        const bucketStart = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const recentCountResult = await pool.query(
+          `SELECT COUNT(*)::int AS count FROM login_challenges WHERE email = $1 AND created_at >= $2`,
+          [normalizedEmail, bucketStart]
+        );
+        const recentCount = Number(recentCountResult.rows[0]?.count || 0);
+        if (recentCount >= 5) {
+          throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '??? ?? ???. ?? ? ?? ??????');
+        }
+
+        const userResult = await pool.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [normalizedEmail]);
+        const user = normalizeRow(userResult.rows[0] || null);
+        const challenge = {
+          id: createRepositoryId('challenge'),
+          userId: user?.id || null,
+          email: normalizedEmail,
+          tokenHash: sha256(token),
+          status: 'ISSUED',
+          expiresAt: plusMinutes(15),
+          consumedAt: null,
+          requestIp: requestIp || null,
+          deliveryProvider: deliveryProvider || 'FILE',
+          deliveryStatus: deliveryStatus || 'PENDING',
+          createdAt: new Date().toISOString()
+        };
+
+        await pool.query(
+          `
+            INSERT INTO login_challenges (
+              id, user_id, email, token_hash, status, expires_at, consumed_at,
+              request_ip, delivery_provider, delivery_status, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          `,
+          [
+            challenge.id,
+            challenge.userId,
+            challenge.email,
+            challenge.tokenHash,
+            challenge.status,
+            challenge.expiresAt,
+            challenge.consumedAt,
+            challenge.requestIp,
+            challenge.deliveryProvider,
+            challenge.deliveryStatus,
+            challenge.createdAt
+          ]
+        );
+
+        return {
+          id: challenge.id,
+          email: challenge.email,
+          expiresAt: challenge.expiresAt
+        };
+      },
+      verifyChallenge: async ({ challengeId, token, displayName, companyName, invitationToken }) => {
+        return withTransaction(pool, async (client) => {
+          const tokenHash = sha256(token);
+          const challengeResult = await client.query(
+            `SELECT * FROM login_challenges WHERE id = $1 LIMIT 1 FOR UPDATE`,
+            [challengeId]
+          );
+          const challenge = normalizeRow(challengeResult.rows[0] || null);
+          if (!challenge) {
+            throw new HttpError(404, 'AUTH_CHALLENGE_NOT_FOUND', '??? ??? ?? ? ???');
+          }
+          if (challenge.status !== 'ISSUED') {
+            throw new HttpError(409, 'AUTH_CHALLENGE_NOT_AVAILABLE', '?? ????? ??? ??? ?????');
+          }
+          if (challenge.token_hash !== tokenHash) {
+            throw new HttpError(403, 'AUTH_CHALLENGE_INVALID', '??? ??? ???? ???');
+          }
+          if (new Date(challenge.expires_at).getTime() < Date.now()) {
+            throw new HttpError(410, 'AUTH_CHALLENGE_EXPIRED', '??? ??? ?????');
+          }
+
+          const userResult = await client.query(`SELECT * FROM users WHERE email = $1 LIMIT 1`, [challenge.email]);
+          let user = normalizeRow(userResult.rows[0] || null);
+          if (!user) {
+            const timestamp = new Date().toISOString();
+            user = {
+              id: createRepositoryId('user'),
+              email: challenge.email,
+              display_name: String(displayName || challenge.email.split('@')[0]).trim(),
+              phone_number: null,
+              status: 'ACTIVE',
+              last_login_at: null,
+              created_at: timestamp,
+              updated_at: timestamp
+            };
+            await client.query(
+              `
+                INSERT INTO users (
+                  id, email, display_name, phone_number, status, last_login_at, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              `,
+              [
+                user.id,
+                user.email,
+                user.display_name,
+                user.phone_number,
+                user.status,
+                user.last_login_at,
+                user.created_at,
+                user.updated_at
+              ]
+            );
+          }
+
+          const invitedMembership = await resolveInvitationForAuth(client, invitationToken, challenge.email, user.id);
+          let memberships = await listActiveMembershipRows(client, user.id);
+
+          if (!invitedMembership && memberships.length === 0 && !String(companyName || '').trim()) {
+            throw new HttpError(409, 'AUTH_SETUP_REQUIRED', '?? ????? ?? ??? ?????.', {
+              companyName: 'REQUIRED'
+            });
+          }
+
+          if (!invitedMembership && memberships.length === 0) {
+            const timestamp = new Date().toISOString();
+            const company = {
+              id: createRepositoryId('company'),
+              name: String(companyName).trim(),
+              owner_user_id: user.id,
+              plan_code: 'BASIC',
+              status: 'ACTIVE',
+              created_at: timestamp,
+              updated_at: timestamp
+            };
+            const membership = {
+              id: createRepositoryId('membership'),
+              company_id: company.id,
+              user_id: user.id,
+              role: 'OWNER',
+              status: 'ACTIVE',
+              invited_by_user_id: user.id,
+              joined_at: timestamp,
+              created_at: timestamp,
+              updated_at: timestamp
+            };
+            await client.query(
+              `INSERT INTO companies (id, name, owner_user_id, plan_code, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [company.id, company.name, company.owner_user_id, company.plan_code, company.status, company.created_at, company.updated_at]
+            );
+            await client.query(
+              `
+                INSERT INTO memberships (
+                  id, company_id, user_id, role, status, invited_by_user_id, joined_at, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              `,
+              [
+                membership.id,
+                membership.company_id,
+                membership.user_id,
+                membership.role,
+                membership.status,
+                membership.invited_by_user_id,
+                membership.joined_at,
+                membership.created_at,
+                membership.updated_at
+              ]
+            );
+            memberships = await listActiveMembershipRows(client, user.id);
+          } else if (invitedMembership) {
+            memberships = await listActiveMembershipRows(client, user.id);
+          }
+
+          const selectedMembership = invitedMembership
+            ? memberships.find((item) => item.company_id === invitedMembership.companyId)
+            : memberships[0];
+
+          if (!selectedMembership) {
+            throw new HttpError(500, 'AUTH_MEMBERSHIP_RESOLUTION_FAILED', '?? ??? ???? ?????.');
+          }
+
+          const session = await createAuthSession(client, {
+            userId: user.id,
+            membershipId: selectedMembership.membership_id || selectedMembership.id,
+            companyId: selectedMembership.company_id
+          });
+          const timestamp = new Date().toISOString();
+          await client.query(`UPDATE users SET last_login_at = $1, updated_at = $2 WHERE id = $3`, [timestamp, timestamp, user.id]);
+          await client.query(`UPDATE login_challenges SET status = 'CONSUMED', consumed_at = $1 WHERE id = $2`, [timestamp, challenge.id]);
+
+          return {
+            sessionId: session.sessionId,
+            refreshToken: session.refreshToken,
+            user: {
+              id: user.id,
+              email: user.email,
+              displayName: user.display_name
+            },
+            company: {
+              id: selectedMembership.company_id,
+              name: selectedMembership.company_name,
+              role: selectedMembership.role
+            },
+            companies: memberships.map((row) => toCompanySummary(row))
+          };
+        });
+      },
+      getSessionContext: async (sessionId) => {
+        const result = await pool.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1`, [sessionId]);
+        return buildSessionPayloadFromClient(pool, result.rows[0] || null);
+      },
+      refreshSessionByRefreshToken: async (refreshToken) => {
+        return withTransaction(pool, async (client) => {
+          const sessionResult = await client.query(
+            `SELECT * FROM sessions WHERE refresh_token_hash = $1 LIMIT 1 FOR UPDATE`,
+            [sha256(refreshToken)]
+          );
+          const session = normalizeRow(sessionResult.rows[0] || null);
+          if (!session || session.revoked_at) {
+            throw new HttpError(401, 'AUTH_REFRESH_INVALID', '??? ?? ??????');
+          }
+          if (new Date(session.expires_at).getTime() < Date.now()) {
+            throw new HttpError(401, 'AUTH_REFRESH_EXPIRED', '??? ?????. ?? ???????');
+          }
+
+          const nextRefreshToken = crypto.randomBytes(24).toString('base64url');
+          await client.query(
+            `UPDATE sessions SET last_seen_at = $1, refresh_token_hash = $2 WHERE id = $3`,
+            [new Date().toISOString(), sha256(nextRefreshToken), session.id]
+          );
+          const nextResult = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1`, [session.id]);
+          const context = await buildSessionPayloadFromClient(client, nextResult.rows[0] || null);
+          if (!context) {
+            throw new HttpError(401, 'AUTH_SESSION_INVALID', '??? ???? ???. ?? ???????');
+          }
+
+          return {
+            sessionId: session.id,
+            refreshToken: nextRefreshToken,
+            user: {
+              id: context.userId,
+              email: context.email,
+              displayName: context.displayName
+            },
+            company: {
+              id: context.companyId,
+              name: context.companyName,
+              role: context.role
+            },
+            companies: context.companies
+          };
+        });
+      },
+      revokeSession: async (sessionId) => {
+        await pool.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [new Date().toISOString(), sessionId]);
+      },
+      revokeSessionByRefreshToken: async (refreshToken) => {
+        await pool.query(`UPDATE sessions SET revoked_at = $1 WHERE refresh_token_hash = $2`, [new Date().toISOString(), sha256(refreshToken)]);
+      },
+      switchSessionCompany: async ({ sessionId, userId, companyId }) => {
+        return withTransaction(pool, async (client) => {
+          const sessionResult = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1 FOR UPDATE`, [sessionId]);
+          const session = normalizeRow(sessionResult.rows[0] || null);
+          if (!session || session.user_id !== userId || session.revoked_at) {
+            throw new HttpError(401, 'AUTH_SESSION_INVALID', '??? ???? ???.');
+          }
+
+          const membershipResult = await client.query(
+            `
+              SELECT memberships.*, companies.name AS company_name
+              FROM memberships
+              JOIN companies ON companies.id = memberships.company_id
+              WHERE memberships.user_id = $1 AND memberships.company_id = $2 AND memberships.status = 'ACTIVE'
+              LIMIT 1
+            `,
+            [userId, companyId]
+          );
+          const membership = normalizeRow(membershipResult.rows[0] || null);
+          if (!membership) {
+            throw new HttpError(403, 'COMPANY_ACCESS_DENIED', '??? ? ?? ?????.');
+          }
+
+          await client.query(
+            `UPDATE sessions SET company_id = $1, membership_id = $2, last_seen_at = $3 WHERE id = $4`,
+            [companyId, membership.id, new Date().toISOString(), sessionId]
+          );
+
+          return {
+            company: {
+              id: companyId,
+              name: membership.company_name,
+              role: membership.role
+            },
+            companies: (await listActiveMembershipRows(client, userId)).map((row) => toCompanySummary(row))
+          };
+        });
+      },
+      createInvitation: async ({ companyId, email, role, invitedByUserId }) => {
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        if (!normalizedEmail) {
+          throw new HttpError(422, 'INVITATION_EMAIL_REQUIRED', '??? ???? ?????.');
+        }
+        if (!['MANAGER', 'STAFF'].includes(role)) {
+          throw new HttpError(422, 'INVITATION_ROLE_INVALID', '?? ??? ???? ????.');
+        }
+
+        return withTransaction(pool, async (client) => {
+          const companyResult = await client.query(`SELECT * FROM companies WHERE id = $1 LIMIT 1`, [companyId]);
+          const company = normalizeRow(companyResult.rows[0] || null);
+          if (!company) {
+            throw new HttpError(404, 'COMPANY_NOT_FOUND', '??? ?? ? ???');
+          }
+
+          const recentResult = await client.query(
+            `
+              SELECT * FROM invitations
+              WHERE company_id = $1 AND email = $2 AND status = 'ISSUED'
+              ORDER BY created_at DESC
+              LIMIT 1
+            `,
+            [companyId, normalizedEmail]
+          );
+          const recent = normalizeRow(recentResult.rows[0] || null);
+          if (recent && Date.now() - new Date(recent.created_at).getTime() < 5 * 60 * 1000) {
+            throw new HttpError(429, 'INVITATION_RATE_LIMITED', '?? ? ?? ??????.');
+          }
+
+          const invitationToken = crypto.randomBytes(24).toString('base64url');
+          const invitation = {
+            id: createRepositoryId('invite'),
+            companyId,
+            email: normalizedEmail,
+            role,
+            invitedByUserId,
+            status: 'ISSUED',
+            tokenHash: sha256(invitationToken),
+            expiresAt: plusDays(7),
+            acceptedAt: null,
+            lastSentAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            companyName: company.name
+          };
+
+          await client.query(
+            `
+              INSERT INTO invitations (
+                id, company_id, email, role, invited_by_user_id, status, token_hash,
+                expires_at, accepted_at, last_sent_at, created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            `,
+            [
+              invitation.id,
+              invitation.companyId,
+              invitation.email,
+              invitation.role,
+              invitation.invitedByUserId,
+              invitation.status,
+              invitation.tokenHash,
+              invitation.expiresAt,
+              invitation.acceptedAt,
+              invitation.lastSentAt,
+              invitation.createdAt
+            ]
+          );
+
+          return {
+            id: invitation.id,
+            email: invitation.email,
+            role: invitation.role,
+            companyId: invitation.companyId,
+            companyName: invitation.companyName,
+            expiresAt: invitation.expiresAt,
+            invitationToken
+          };
+        });
+      },
+      listMembershipsByCompany: async (companyId) => {
+        const result = await pool.query(
+          `
+            SELECT memberships.id, memberships.role, memberships.status, memberships.joined_at,
+                   users.email, users.display_name
+            FROM memberships
+            JOIN users ON users.id = memberships.user_id
+            WHERE memberships.company_id = $1
+            ORDER BY memberships.created_at ASC
+          `,
+          [companyId]
+        );
+        return normalizeRows(result.rows).map((item) => ({
+          id: item.id,
+          role: item.role,
+          status: item.status,
+          joinedAt: item.joined_at,
+          email: item.email,
+          displayName: item.display_name
+        }));
+      },
+      listInvitationsByCompany: async (companyId) => {
+        const result = await pool.query(
+          `
+            SELECT id, email, role, status, expires_at, accepted_at, last_sent_at, created_at
+            FROM invitations
+            WHERE company_id = $1
+            ORDER BY created_at DESC
+          `,
+          [companyId]
+        );
+        return normalizeRows(result.rows).map((item) => ({
+          id: item.id,
+          email: item.email,
+          role: item.role,
+          status: item.status,
+          expiresAt: item.expires_at,
+          acceptedAt: item.accepted_at,
+          lastSentAt: item.last_sent_at,
+          createdAt: item.created_at
+        }));
+      },
+      listCompaniesForUser: async (userId) => {
+        return (await listActiveMembershipRows(pool, userId)).map((row) => toCompanySummary(row));
+      }
+    },
+    auditLogRepository: {
+      append: async (entry) => {
+        const payloadJson = entry.payloadJson == null ? null : JSON.stringify(entry.payloadJson);
+        const result = await pool.query(
+          `
+            INSERT INTO audit_logs (
+              id, company_id, actor_user_id, actor_type, action,
+              resource_type, resource_id, request_id, payload_json, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+            RETURNING *
+          `,
+          [
+            entry.id || `audit_${crypto.randomUUID()}`,
+            entry.companyId,
+            entry.actorUserId || null,
+            entry.actorType,
+            entry.action,
+            entry.resourceType,
+            entry.resourceId || null,
+            entry.requestId || null,
+            payloadJson,
+            entry.createdAt || new Date().toISOString()
+          ]
+        );
+        return toAuditLog(result.rows[0]);
+      },
+      listByCompany: async (companyId, options = {}) => {
+        const limit = Number.parseInt(options.limit || 100, 10);
+        const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
+        const result = await pool.query(
+          `
+            SELECT *
+            FROM audit_logs
+            WHERE company_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+          `,
+          [companyId, safeLimit]
+        );
+        return result.rows.map((row) => toAuditLog(row));
+      }
+    },
+    timelineEventRepository: {
+      append: async ({ jobCaseId, companyId, actorUserId, eventType, summary, payloadJson, createdAt }) => {
+        return withTransaction(pool, async (client) => {
+          const jobCase = await loadJobCaseForWrite(client, jobCaseId);
+          const payload = payloadJson == null ? null : JSON.stringify(payloadJson);
+          const timestamp = createdAt || new Date().toISOString();
+          const resolvedCompanyId = companyId || jobCase.company_id || null;
+
+          const result = await client.query(
+            `
+              INSERT INTO timeline_events (
+                id, company_id, job_case_id, actor_user_id, event_type, summary, payload_json, created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+              RETURNING *
+            `,
+            [
+              `timeline_${crypto.randomUUID()}`,
+              resolvedCompanyId,
+              jobCaseId,
+              actorUserId || null,
+              eventType,
+              summary,
+              payload,
+              timestamp
+            ]
+          );
+
+          await client.query(
+            `
+              UPDATE job_cases
+              SET updated_at = $2,
+                  updated_by_user_id = $3
+              WHERE id = $1
+            `,
+            [jobCaseId, timestamp, actorUserId || null]
+          );
+
+          return toTimelineEvent(result.rows[0]);
+        });
+      }
+    },
+    fileAssetRepository: {
+      listByFieldRecordId: async (fieldRecordId) => {
+        const result = await pool.query(
+          `
+            SELECT *
+            FROM field_record_photos
+            WHERE field_record_id = $1
+            ORDER BY sort_order ASC, created_at ASC
+          `,
+          [fieldRecordId]
+        );
+        return normalizeRows(result.rows);
+      }
+    },
+    migrations: {
+      apply: async () => applyPostgresMigrations({ databaseUrl, connectionOptions }),
+      status: async () => getPostgresMigrationStatus(databaseUrl, { connectionOptions })
+    },
+    close: async () => {
+      if (ownsPool) {
+        await pool.end();
+      }
+    }
+  };
+}

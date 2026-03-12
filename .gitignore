@@ -1,0 +1,26 @@
+# Node
+node_modules/
+
+# Local app data
+data/
+output/
+
+# Local tooling
+.fly-config/
+.codex/
+.vscode/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+deploy/homelab/.env
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+*.pid
+*.tmp

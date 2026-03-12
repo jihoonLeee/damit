@@ -1,0 +1,36 @@
+app = "field-agreement-jihoon-staging"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ENV = "staging"
+  NODE_ENV = "production"
+  STORAGE_ENGINE = "POSTGRES"
+  APP_BASE_URL = "https://field-agreement-jihoon-staging.fly.dev"
+  MAIL_PROVIDER = "FILE"
+  POSTGRES_SSL_MODE = "require"
+  POSTGRES_SSL_REQUIRE = "true"
+  POSTGRES_APPLICATION_NAME = "field-agreement-assistant-staging"
+  POSTGRES_POOL_MAX = "10"
+  DATA_DIR = "/data"
+  DB_FILE_PATH = "/data/app.sqlite"
+  UPLOAD_DIR = "/data/uploads"
+  BACKUP_DIR = "/data/backups"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[mounts]
+  source = "app_data"
+  destination = "/data"

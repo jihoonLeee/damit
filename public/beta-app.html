@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>현장 추가금 합의 비서 Beta Workspace</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body data-auth-mode="session">
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">FIELD AGREEMENT ASSISTANT</p>
+        <h1>현장 추가금 합의 비서 Beta Workspace</h1>
+        <p class="hero-copy">
+          사진부터 남기고, 추가 사유를 정리하고, 설명 초안과 합의 기록까지 한 흐름으로 처리하는 입주청소 팀용 beta workspace 입니다. 이 화면은 세션 로그인과 회사 컨텍스트를 전제로 동작하며, 데이터는 활성 업체 기준으로만 보입니다.
+        </p>
+      </div>
+      <aside class="hero-card">
+        <h2>PM Gate Snapshot</h2>
+        <ul>
+          <li>사진 우선 입력</li>
+          <li>범위 대비 후 설명 초안</li>
+          <li>상태 변경은 합의 기록으로만 처리</li>
+        </ul>
+      </aside>
+    </header>
+
+    <section class="workflow-banner" aria-label="핵심 사용자 흐름">
+      <div class="flow-chip active">1. 사진과 사유 기록</div>
+      <div class="flow-chip">2. 작업 건 연결</div>
+      <div class="flow-chip">3. 금액과 범위 정리</div>
+      <div class="flow-chip">4. 설명 초안 생성</div>
+      <div class="flow-chip">5. 합의 기록 저장</div>
+    </section>
+
+    <main class="workspace">
+      <section class="panel panel-capture">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">현장 시작점</p>
+            <h2>빠른 현장 기록</h2>
+          </div>
+          <button class="ghost-button" id="reset-field-record">초기화</button>
+        </div>
+
+        <section class="status-strip">
+          <div>
+            <span class="status-strip-label">현재 단계</span>
+            <strong id="progress-title">1. 현장 문제를 먼저 기록하세요</strong>
+          </div>
+          <p id="progress-copy">사진 1장 이상과 사유를 저장하면 다음 단계로 넘어갈 수 있습니다.</p>
+        </section>
+
+        <form id="field-record-form" class="stack">
+          <label class="field">
+            <span>사진 업로드</span>
+            <input type="file" id="photos" name="photos" accept="image/png,image/jpeg,image/webp" multiple required />
+          </label>
+
+          <label class="field">
+            <span>1차 사유</span>
+            <select id="primaryReason" name="primaryReason" required>
+              <option value="">선택해주세요</option>
+              <option value="CONTAMINATION">오염도 문제</option>
+              <option value="REMOVAL_TASK">제거 작업 추가</option>
+              <option value="SPACE_ADDED">공간 범위 추가</option>
+              <option value="LAYOUT_DIFFERENCE">구조/평수 차이</option>
+              <option value="WASTE_OR_BELONGINGS">폐기물/짐 문제</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>2차 상세 사유</span>
+            <select id="secondaryReason" name="secondaryReason">
+              <option value="">선택 안 함</option>
+              <option value="NICOTINE">니코틴 오염</option>
+              <option value="MOLD">곰팡이 제거</option>
+              <option value="STICKER_REMOVAL">스티커/보양지 제거</option>
+              <option value="WASTE_DISPOSAL">폐기물 정리</option>
+              <option value="VERANDA_ADDED">베란다 추가</option>
+              <option value="UTILITY_ROOM_ADDED">다용도실 추가</option>
+              <option value="STORAGE_ADDED">창고 추가</option>
+              <option value="LAYOUT_MISMATCH">구조 차이</option>
+              <option value="OTHER">기타</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>메모</span>
+            <textarea id="note" name="note" rows="4" maxlength="500" placeholder="예: 거실 벽면과 주방 상판 니코틴 오염 심함"></textarea>
+          </label>
+
+          <button type="submit" class="primary-button" id="save-field-record">기록 저장</button>
+        </form>
+
+        <div id="field-record-feedback" class="feedback" aria-live="polite"></div>
+
+        <section class="subpanel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">기록 저장 후</p>
+              <h3>작업 건 연결</h3>
+            </div>
+          </div>
+
+          <div class="context-card">
+            <strong id="current-field-record-label">아직 저장된 현장 기록이 없습니다.</strong>
+            <p class="helper-text" id="next-action-hint">현장 기록 저장 후 새 작업 건을 만들거나 기존 작업 건에 연결할 수 있습니다.</p>
+          </div>
+
+          <form id="job-case-form" class="stack">
+            <label class="field">
+              <span>고객명 또는 현장 식별명</span>
+              <input type="text" id="customerLabel" name="customerLabel" maxlength="80" />
+            </label>
+
+            <label class="field">
+              <span>연락처 메모</span>
+              <input type="text" id="contactMemo" name="contactMemo" maxlength="120" placeholder="예: 당근 문의 고객" />
+            </label>
+
+            <label class="field">
+              <span>주소 또는 현장명</span>
+              <input type="text" id="siteLabel" name="siteLabel" maxlength="120" />
+            </label>
+
+            <label class="field">
+              <span>원래 견적 금액</span>
+              <input type="number" id="originalQuoteAmount" name="originalQuoteAmount" min="0" step="1" />
+            </label>
+
+            <button type="submit" class="secondary-button" id="create-job-case">새 작업 건 만들기</button>
+          </form>
+
+          <div class="divider"></div>
+
+          <div class="stack">
+            <label class="field">
+              <span>기존 작업 건 검색</span>
+              <input type="search" id="job-case-search" placeholder="현장명 또는 고객명" />
+            </label>
+            <div id="link-job-cases" class="job-list compact"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel panel-list">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">작업 현황</p>
+            <h2>작업 건 목록</h2>
+          </div>
+        </div>
+
+        <div class="filters">
+          <button class="filter-chip active" data-status="ALL">전체</button>
+          <button class="filter-chip" data-status="UNEXPLAINED">미설명</button>
+          <button class="filter-chip" data-status="EXPLAINED">설명완료</button>
+          <button class="filter-chip" data-status="AGREED">합의완료</button>
+          <button class="filter-chip" data-status="ON_HOLD">보류</button>
+          <button class="filter-chip" data-status="EXCLUDED">작업 제외</button>
+        </div>
+
+        <label class="field">
+          <span>검색</span>
+          <input type="search" id="list-query" placeholder="잠실, 송파, 고객명" />
+        </label>
+
+        <div id="job-cases" class="job-list"></div>
+      </section>
+
+      <section class="panel panel-detail detail-panel" id="detail-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">설명과 합의</p>
+            <h2 id="detail-title">작업 건을 선택해주세요</h2>
+          </div>
+          <span class="status-badge neutral" id="detail-status">미선택</span>
+        </div>
+
+        <div id="detail-empty" class="empty-state">
+          목록에서 작업 건을 선택하면 범위 대비, 설명 초안, 합의 기록, 타임라인을 한 번에 확인할 수 있습니다.
+        </div>
+
+        <div id="detail-content" class="stack hidden">
+          <section class="card-grid" id="detail-summary">
+            <article class="metric-card">
+              <span>원래 견적</span>
+              <strong id="metric-original">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>변경 금액</span>
+              <strong id="metric-revised">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>차액</span>
+              <strong id="metric-delta">-</strong>
+            </article>
+          </section>
+
+          <nav class="detail-jump" id="detail-jump" aria-label="상세 빠른 이동">
+            <button type="button" class="jump-chip" data-target="quote-card">금액/범위</button>
+            <button type="button" class="jump-chip" data-target="draft-card">설명 초안</button>
+            <button type="button" class="jump-chip" data-target="customer-confirm-card">고객 확인</button>
+            <button type="button" class="jump-chip jump-chip-strong" data-target="agreement-card">합의 기록</button>
+            <button type="button" class="jump-chip" data-target="records-card">현장 기록</button>
+            <button type="button" class="jump-chip" data-target="timeline-card">타임라인</button>
+          </nav>
+
+          <section class="card" id="quote-card">
+            <div class="card-header">
+              <h3>변경 견적과 범위 대비</h3>
+            </div>
+            <form id="quote-form" class="inline-form">
+              <input type="number" id="revisedQuoteAmount" min="0" step="1" placeholder="변경 후 금액" />
+              <button type="submit" class="secondary-button action-emphasis" id="save-quote">금액 저장</button>
+            </form>
+            <div class="scope-grid">
+              <div class="scope-card">
+                <h4>기본 포함 범위</h4>
+                <p id="scope-base">아직 범위 정보가 없습니다.</p>
+              </div>
+              <div class="scope-card">
+                <h4>추가 작업</h4>
+                <p id="scope-extra">현장 기록과 금액을 저장하면 정리됩니다.</p>
+              </div>
+            </div>
+            <p class="helper-text" id="scope-reason"></p>
+          </section>
+
+          <section class="card" id="draft-card">
+            <div class="card-header draft-actions">
+              <h3>고객 설명 초안</h3>
+              <div class="action-group">
+                <button id="copy-draft" class="ghost-button" type="button">복사</button>
+                <button id="generate-draft" class="secondary-button action-emphasis-soft" type="button">설명 초안 생성</button>
+              </div>
+            </div>
+            <p id="draft-body" class="draft-box">현장 기록과 변경 금액을 먼저 준비해주세요.</p>
+            <p class="helper-text" id="copy-hint">현장 통화 전에 복사해 카카오톡/문자에 바로 붙여넣을 수 있습니다.</p>
+          </section>
+
+          <section class="card" id="customer-confirm-card">
+            <div class="card-header draft-actions">
+              <h3>고객 확인 링크</h3>
+              <div class="action-group">
+                <a id="open-confirm-link" class="ghost-button hidden" href="#" target="_blank" rel="noreferrer">열기</a>
+                <button id="copy-confirm-link" class="ghost-button" type="button">링크 복사</button>
+                <button id="generate-confirm-link" class="secondary-button action-emphasis-soft" type="button">확인 링크 발급</button>
+              </div>
+            </div>
+            <p id="customer-confirm-summary" class="helper-text">설명 초안과 변경 금액이 준비되면 고객 확인 링크를 발급할 수 있습니다.</p>
+            <label class="field">
+              <span>방금 발급한 확인 링크</span>
+              <input type="text" id="customer-confirm-url" readonly placeholder="링크를 발급하면 이곳에 표시됩니다." />
+            </label>
+            <p id="customer-confirm-meta" class="helper-text">고객이 링크를 열거나 확인하면 여기 상태가 쌓입니다.</p>
+          </section>
+
+          <section class="card" id="agreement-card">
+            <div class="card-header">
+              <h3>합의 기록</h3>
+            </div>
+            <form id="agreement-form" class="stack">
+              <div class="two-column">
+                <label class="field">
+                  <span>상태</span>
+                  <select id="agreementStatus" required>
+                    <option value="">선택해주세요</option>
+                    <option value="EXPLAINED">설명완료</option>
+                    <option value="AGREED">합의완료</option>
+                    <option value="ON_HOLD">보류</option>
+                    <option value="EXCLUDED">작업 제외</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>확인 채널</span>
+                  <select id="confirmationChannel" required>
+                    <option value="">선택해주세요</option>
+                    <option value="IN_PERSON">현장 대면</option>
+                    <option value="PHONE">전화</option>
+                    <option value="KAKAO_OR_SMS">카카오톡/문자</option>
+                    <option value="OTHER">기타</option>
+                  </select>
+                </label>
+              </div>
+              <div class="two-column">
+                <label class="field">
+                  <span>확정 시각</span>
+                  <input type="datetime-local" id="confirmedAt" />
+                </label>
+                <label class="field">
+                  <span>확정 금액</span>
+                  <input type="number" id="confirmedAmount" min="0" step="1" placeholder="합의완료일 때 필수" />
+                </label>
+              </div>
+              <label class="field">
+                <span>고객 반응 메모</span>
+                <textarea id="customerResponseNote" rows="3" placeholder="예: 추가 비용 안내 후 진행 동의"></textarea>
+              </label>
+              <p class="helper-text">상태만 바꾸지 말고, 채널·시각·금액까지 함께 남겨두세요.</p>
+              <button type="submit" class="primary-button" id="save-agreement">합의 기록 저장</button>
+            </form>
+          </section>
+
+          <section class="card" id="records-card">
+            <div class="card-header">
+              <h3>현장 기록</h3>
+            </div>
+            <div id="field-records-detail" class="stack"></div>
+          </section>
+
+          <section class="card" id="timeline-card">
+            <div class="card-header">
+              <h3>타임라인</h3>
+            </div>
+            <div id="timeline" class="timeline"></div>
+          </section>
+
+          <div class="detail-tail-spacer" aria-hidden="true"></div>
+        </div>
+
+        <div id="detail-feedback" class="feedback" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
+
+
