@@ -42,3 +42,6 @@ This repository currently contains:
 - self-host track: [docs/self-host/README.md](docs/self-host/README.md)
 - GitHub setup: [docs/engineering/GITHUB_REPOSITORY_SETUP.md](docs/engineering/GITHUB_REPOSITORY_SETUP.md)
 - local production-like plan: [docs/engineering/LOCAL_OPERATIONAL_VERSION_PLAN.md](docs/engineering/LOCAL_OPERATIONAL_VERSION_PLAN.md)
+- DDD-lite review: [docs/engineering/DDD_REFACTOR_REVIEW.md](docs/engineering/DDD_REFACTOR_REVIEW.md)
+- release deploy policy: [docs/engineering/RELEASE_DEPLOY_POLICY.md](docs/engineering/RELEASE_DEPLOY_POLICY.md)
+- release deploy runbook: [docs/engineering/RELEASE_DEPLOY_RUNBOOK.md](docs/engineering/RELEASE_DEPLOY_RUNBOOK.md)

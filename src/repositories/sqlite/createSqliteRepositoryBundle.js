@@ -1,4 +1,4 @@
-import { createBackup, createId, getOpsSnapshot, getStorageSummary, listBackups, nowIso, readDb, resetDb, updateDb } from "../../store.js";
+﻿import { createBackup, createId, getOpsSnapshot, getStorageSummary, listBackups, nowIso, readDb, resetDb, updateDb } from "../../store.js";
 import {
   createInvitation,
   getSessionContext,
@@ -11,13 +11,13 @@ import {
   revokeSessionByRefreshToken,
   switchSessionCompany,
   verifyLoginChallenge
-} from "../../auth-store.js";
+} from "../../contexts/auth/infrastructure/sqlite-auth-store.js";
 import {
   acknowledgeCustomerConfirmation,
   createCustomerConfirmationLink,
   getCustomerConfirmationView,
   getLatestCustomerConfirmationLink
-} from "../../customer-confirmation-store.js";
+} from "../../contexts/customer-confirmation/infrastructure/sqlite-customer-confirmation-store.js";
 
 
 function canReadJobCase(jobCase, scope) {
@@ -474,3 +474,4 @@ export function createSqliteRepositoryBundle() {
     }
   };
 }
+

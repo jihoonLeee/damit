@@ -1,0 +1,71 @@
+name: Self-Host Release Deploy
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-host-release-deploy-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Join Tailscale network
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          hostname: github-actions-damit-release-deploy
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SELF_HOST_SSH_KEY }}
+
+      - name: Trust server host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_TAILNET_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync repository
+        run: |
+          rsync -az --delete \
+            --filter='P deploy/homelab/.env' \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'data/' \
+            --exclude 'output/' \
+            --exclude '.fly-config/' \
+            ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
+
+      - name: Deploy on server
+        run: |
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/deploy.sh"
+
+      - name: Record release version on server
+        run: |
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cat > '${{ secrets.SELF_HOST_APP_DIR }}/.release-version' <<'EOF'
+TAG=${{ github.event.release.tag_name }}
+NAME=${{ github.event.release.name }}
+TARGET=${{ github.event.release.target_commitish }}
+SHA=${{ github.sha }}
+PUBLISHED_AT=${{ github.event.release.published_at }}
+EOF"
+
+      - name: Smoke check on server
+        run: |
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/smoke.sh"

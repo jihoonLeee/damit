@@ -1,4 +1,4 @@
-import fs from "node:fs/promises";
+﻿import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -11,7 +11,7 @@ import {
   labelSecondary,
   summarizeAgreement,
   toJobCaseListItem
-} from "./domain.js";
+} from "./contexts/field-agreement/domain/field-agreement.domain.js";
 import { HttpError, createRequestId, json, notFound, readJsonBody, sendError } from "./http.js";
 import { parseMultipart } from "./multipart.js";
 import { createId, ensureStorage, nowIso, saveUpload } from "./store.js";
@@ -25,7 +25,7 @@ import {
   validateJobCasePayload,
   validateListStatus,
   validateQuotePayload
-} from "./validation.js";
+} from "./contexts/field-agreement/application/field-agreement.validation.js";
 import {
   assertCsrf,
   createAuthCookieHeaders,
@@ -33,7 +33,7 @@ import {
   createCsrfToken,
   getAuthContext,
   refreshSessionFromRequest
-} from "./auth-runtime.js";
+} from "./contexts/auth/application/auth-runtime.js";
 import { sendInvitationEmail, sendMagicLinkEmail } from "./mail-gateway.js";
 import { runPostgresPreflight } from "./db/postgres-preflight.js";
 import { createRepositoryBundle } from "./repositories/createRepositoryBundle.js";
@@ -1174,6 +1174,7 @@ async function serveFile(response, filePath) {
     notFound(response);
   }
 }
+
 
 
 
