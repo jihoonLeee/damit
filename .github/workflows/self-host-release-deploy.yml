@@ -47,11 +47,22 @@ jobs:
 
       - name: Start SSH agent
         shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SELF_HOST_SSH_KEY }}
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/github_actions_deploy_key
+          printf '\n' >> ~/.ssh/github_actions_deploy_key
+          python - <<'PY'
+          from pathlib import Path
+          key_path = Path.home() / '.ssh' / 'github_actions_deploy_key'
+          content = key_path.read_text(encoding='utf-8')
+          key_path.write_text(content.replace('\r\n', '\n').replace('\r', '\n'), encoding='utf-8')
+          PY
+          chmod 600 ~/.ssh/github_actions_deploy_key
           eval "$(ssh-agent -s)"
-          printf '%s' "${{ secrets.SELF_HOST_SSH_KEY }}" | tr -d '\r' | ssh-add -
+          ssh-add ~/.ssh/github_actions_deploy_key
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
 
