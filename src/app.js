@@ -111,6 +111,11 @@ export function createApp() {
           return;
         }
 
+        if (pathname === "/ops") {
+          await serveFile(response, path.join(config.publicDir, "ops.html"));
+          return;
+        }
+
         await serveFile(response, path.join(config.publicDir, pathname));
       } catch (error) {
         sendError(response, requestId, error);
@@ -394,6 +399,12 @@ async function handleApiRequest(request, response, repositories) {
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/v1/admin/ops-snapshot") {
+    assertAuthenticated(request);
+    const snapshot = await repositories.systemRepository.getOpsSnapshot(5);
+    json(response, 200, snapshot);
+    return;
+  }
 
   if (request.method === "GET" && pathname === "/api/v1/admin/postgres-preflight") {
     assertAuthenticated(request);

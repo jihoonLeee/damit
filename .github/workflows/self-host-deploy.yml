@@ -3,12 +3,25 @@ name: Self-Host Deploy
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: self-host-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Join Tailscale network
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          hostname: github-actions-damit-deploy
 
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -18,7 +31,7 @@ jobs:
       - name: Trust server host key
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_TAILNET_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Sync repository
         run: |
@@ -28,14 +41,14 @@ jobs:
             --exclude 'data/' \
             --exclude 'output/' \
             --exclude '.fly-config/' \
-            ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_SSH_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
+            ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
 
       - name: Deploy on server
         run: |
-          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_SSH_HOST }}" \
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/deploy.sh"
 
       - name: Smoke check on server
         run: |
-          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_SSH_HOST }}" \
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/smoke.sh"

@@ -567,6 +567,48 @@ export async function getStorageSummary() {
   };
 }
 
+export async function listBackups(limit = 10) {
+  await ensureStorage();
+  await fs.mkdir(config.backupDir, { recursive: true });
+  const entries = await fs.readdir(config.backupDir, { withFileTypes: true });
+  const items = [];
+
+  for (const entry of entries) {
+    const targetPath = path.join(config.backupDir, entry.name);
+    const stat = await fs.stat(targetPath);
+    let fileCount = null;
+    if (entry.isDirectory()) {
+      const tree = await listDirectoryTree(targetPath);
+      fileCount = countFilesInDirectory(tree);
+    }
+    items.push({
+      name: entry.name,
+      type: entry.isDirectory() ? "directory" : "file",
+      filePath: targetPath,
+      relativePath: path.relative(config.rootDir, targetPath),
+      sizeBytes: stat.size,
+      updatedAt: stat.mtime.toISOString(),
+      fileCount
+    });
+  }
+
+  return items.sort((left, right) => (left.updatedAt < right.updatedAt ? 1 : -1)).slice(0, limit);
+}
+
+export async function getOpsSnapshot(limit = 5) {
+  return {
+    storage: await getStorageSummary(),
+    backups: await listBackups(limit),
+    runtime: {
+      nodeEnv: config.nodeEnv,
+      appBaseUrl: config.appBaseUrl || null,
+      objectStorageProvider: config.objectStorageProvider,
+      storageEngine: config.storageEngine
+    }
+  };
+}
+
+
 export function createId(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 }
@@ -612,3 +654,4 @@ export async function saveUpload(filePart, assetContext = {}) {
     url: savedAsset.url
   };
 }
+

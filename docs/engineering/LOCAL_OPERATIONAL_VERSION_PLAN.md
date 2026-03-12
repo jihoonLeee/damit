@@ -2,10 +2,10 @@
 
 ## PM answer
 
-Yes, pushing beyond a pilot-only local setup is a good direction, but only if we define the target honestly.
+Yes, moving beyond a pilot-only local setup is the right direction, but only if we define the target honestly.
 
-The right target is not “full production on a laptop.”
-The right target is “single-node production-like operation.”
+The right target is not "full production on a laptop."
+The right target is "single-node production-like operation."
 
 ## What PM means by production-like local operation
 
@@ -16,6 +16,7 @@ A stronger local or self-host runtime with:
 - safer remote access
 - cleaner operator workflows
 - documented startup and recovery steps
+- better admin visibility
 
 ## What it is not yet
 
@@ -33,6 +34,8 @@ A stronger local or self-host runtime with:
 - keep Tailscale-based trusted access
 - finish Korean copy cleanup in the main workspace
 - add restart and recovery checklists
+- add ops snapshot visibility
+- add a lightweight internal ops console
 
 ### Phase 2. Single-node production-like quality
 
@@ -50,7 +53,7 @@ A stronger local or self-host runtime with:
 
 ## PM conclusion
 
-Going straight from today’s state to “full production” would be premature.
-Going from today’s state to a strong single-node operational version is the right move.
+Going straight from today's state to full public production would be premature.
+Going from today's state to a strong single-node operational version is the right move.
 
 That should be the next major direction after GitHub management is in place.

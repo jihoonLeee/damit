@@ -180,6 +180,16 @@ test("admin backup and reset endpoints work for pilot operations", async () => {
   const backupPayload = await backup.json();
   assert.match(backupPayload.fileName, /test-backup/);
 
+  const snapshot = await fetch(`${baseUrl}/api/v1/admin/ops-snapshot`, {
+    headers: authHeaders()
+  });
+  assert.equal(snapshot.status, 200);
+  const snapshotPayload = await snapshot.json();
+  assert.equal(snapshotPayload.storage.storageEngine, "SQLITE");
+  assert.ok(Array.isArray(snapshotPayload.backups));
+  assert.ok(snapshotPayload.backups.length >= 1);
+  assert.equal(snapshotPayload.runtime.storageEngine, "SQLITE");
+
   const badReset = await fetch(`${baseUrl}/api/v1/admin/reset-data`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),

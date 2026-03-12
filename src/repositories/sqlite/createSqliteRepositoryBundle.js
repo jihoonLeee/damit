@@ -1,4 +1,4 @@
-import { createBackup, createId, getStorageSummary, nowIso, readDb, resetDb, updateDb } from "../../store.js";
+import { createBackup, createId, getOpsSnapshot, getStorageSummary, listBackups, nowIso, readDb, resetDb, updateDb } from "../../store.js";
 import {
   createInvitation,
   getSessionContext,
@@ -127,7 +127,9 @@ export function createSqliteRepositoryBundle() {
       resetAllData: async () => {
         await resetDb();
         return getStorageSummary();
-      }
+      },
+      listRecentBackups: async (limit = 10) => listBackups(limit),
+      getOpsSnapshot: async (limit = 5) => getOpsSnapshot(limit)
     },
     jobCaseRepository: {
       listByScope: async (scope = {}) => {

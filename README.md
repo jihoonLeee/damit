@@ -8,6 +8,7 @@ This repository currently contains:
 - UX and feature specifications
 - a working local MVP
 - self-host deployment assets for a private pilot on Ubuntu
+- a lightweight internal ops console at `/ops`
 - production-readiness and migration planning documents
 
 ## Current PM posture
@@ -37,6 +38,7 @@ This repository currently contains:
 
 - product readiness: [docs/engineering/PRODUCTION_READINESS.md](docs/engineering/PRODUCTION_READINESS.md)
 - local launch checklist: [docs/engineering/LOCAL_LAUNCH_CHECKLIST.md](docs/engineering/LOCAL_LAUNCH_CHECKLIST.md)
+- ops console spec: [docs/engineering/OPS_CONSOLE_SPEC.md](docs/engineering/OPS_CONSOLE_SPEC.md)
 - self-host track: [docs/self-host/README.md](docs/self-host/README.md)
 - GitHub setup: [docs/engineering/GITHUB_REPOSITORY_SETUP.md](docs/engineering/GITHUB_REPOSITORY_SETUP.md)
 - local production-like plan: [docs/engineering/LOCAL_OPERATIONAL_VERSION_PLAN.md](docs/engineering/LOCAL_OPERATIONAL_VERSION_PLAN.md)

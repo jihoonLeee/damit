@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>다밋 운영 콘솔</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="ops-body" data-auth-mode="owner-token">
+  <div class="ops-shell">
+    <header class="ops-hero">
+      <div>
+        <p class="eyebrow">DAMIT OPS</p>
+        <h1>다밋 운영 콘솔</h1>
+        <p class="ops-copy">로컬 및 self-host 단일 노드 운영 상태를 빠르게 확인하고, 즉시 백업을 남길 수 있는 내부 운영 화면입니다.</p>
+      </div>
+      <div class="ops-actions-top">
+        <a class="ghost-button" href="/app">작업 화면</a>
+        <a class="ghost-button" href="/login">로그인</a>
+      </div>
+    </header>
+
+    <section class="ops-grid">
+      <article class="ops-card">
+        <span class="ops-card-label">서비스 상태</span>
+        <strong id="ops-health-status">확인 중</strong>
+        <p id="ops-health-meta" class="helper-text">health endpoint를 확인하고 있습니다.</p>
+      </article>
+      <article class="ops-card">
+        <span class="ops-card-label">저장소</span>
+        <strong id="ops-storage-engine">확인 중</strong>
+        <p id="ops-storage-meta" class="helper-text">storage summary를 불러오고 있습니다.</p>
+      </article>
+      <article class="ops-card">
+        <span class="ops-card-label">런타임</span>
+        <strong id="ops-runtime-mode">확인 중</strong>
+        <p id="ops-runtime-meta" class="helper-text">runtime metadata를 불러오고 있습니다.</p>
+      </article>
+    </section>
+
+    <section class="ops-layout">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Quick Actions</p>
+            <h2>운영 액션</h2>
+          </div>
+          <button type="button" class="ghost-button" id="ops-refresh">새로고침</button>
+        </div>
+        <form id="ops-backup-form" class="stack">
+          <label class="field">
+            <span>백업 라벨</span>
+            <input type="text" id="ops-backup-label" maxlength="40" placeholder="manual-check" />
+          </label>
+          <button type="submit" class="primary-button" id="ops-backup-submit">백업 만들기</button>
+        </form>
+        <div id="ops-feedback" class="feedback" aria-live="polite"></div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Snapshot</p>
+            <h2>운영 스냅샷</h2>
+          </div>
+        </div>
+        <dl class="ops-definition-list" id="ops-snapshot-list">
+          <div><dt>앱 Base URL</dt><dd>확인 중</dd></div>
+          <div><dt>Object Storage</dt><dd>확인 중</dd></div>
+          <div><dt>작업 건 수</dt><dd>확인 중</dd></div>
+          <div><dt>현장 기록 수</dt><dd>확인 중</dd></div>
+          <div><dt>합의 기록 수</dt><dd>확인 중</dd></div>
+        </dl>
+      </section>
+    </section>
+
+    <section class="ops-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Backups</p>
+          <h2>최근 백업</h2>
+        </div>
+      </div>
+      <div id="ops-backups" class="ops-backup-list">
+        <div class="empty-state">최근 백업을 불러오는 중입니다.</div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="/ops.js"></script>
+</body>
+</html>

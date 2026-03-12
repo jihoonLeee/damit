@@ -21,6 +21,7 @@ GitHub management is now recommended because:
 - deployment templates
 - GitHub workflow files
 - example environment files with placeholders only
+- project-local `skills/` definitions that belong to this repository workflow
 
 ## What must never be committed
 
@@ -32,6 +33,12 @@ GitHub management is now recommended because:
 - uploaded files
 - backup artifacts
 - local tool state such as `.fly-config/`
+- personal keys or machine-specific secret exports
+
+## PM note on skills
+
+Repository-local skills should be versioned with the project because they are part of the team workflow.
+Personal or system-level skills outside the repository should stay out of Git.
 
 ## Branch recommendation
 
@@ -47,16 +54,19 @@ GitHub management is now recommended because:
 ## GitHub Actions included
 
 - CI workflow for core regression checks
-- manual self-host deployment workflow template
+- manual self-host deployment workflow through Tailscale
 
-## Secrets to prepare later
+## Secrets to prepare
 
 For self-host deployment workflow:
 
-- `SELF_HOST_SSH_HOST`
+- `TAILSCALE_AUTHKEY`
+- `SELF_HOST_TAILNET_HOST`
 - `SELF_HOST_SSH_PORT`
 - `SELF_HOST_SSH_USER`
 - `SELF_HOST_SSH_KEY`
 - `SELF_HOST_APP_DIR`
+
+See [GITHUB_ACTIONS_SELF_HOST_SETUP.md](GITHUB_ACTIONS_SELF_HOST_SETUP.md).
 
 The workflow assumes the server already has a valid `deploy/homelab/.env` file.

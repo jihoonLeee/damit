@@ -1,5 +1,5 @@
 ﻿export const repositoryContracts = {
-  systemRepository: ["getStorageSummary", "createBackup", "resetAllData"],
+  systemRepository: ["getStorageSummary", "createBackup", "resetAllData", "listRecentBackups", "getOpsSnapshot"],
   jobCaseRepository: [
     "listByScope",
     "getDetailById",

@@ -361,6 +361,27 @@ function maskDatabaseUrl(databaseUrl) {
   return databaseUrl.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@');
 }
 
+
+async function listRecentBackupsFromDirectory(limit = 10) {
+  await fs.mkdir(config.backupDir, { recursive: true });
+  const entries = await fs.readdir(config.backupDir, { withFileTypes: true });
+  const items = await Promise.all(entries.map(async (entry) => {
+    const targetPath = path.join(config.backupDir, entry.name);
+    const stat = await fs.stat(targetPath);
+    return {
+      name: entry.name,
+      type: entry.isDirectory() ? "directory" : "file",
+      filePath: targetPath,
+      relativePath: path.relative(config.rootDir, targetPath),
+      sizeBytes: stat.size,
+      updatedAt: stat.mtime.toISOString(),
+      fileCount: null
+    };
+  }));
+
+  return items.sort((left, right) => (left.updatedAt < right.updatedAt ? 1 : -1)).slice(0, limit);
+}
+
 async function exportOperationalSnapshot(pool) {
   const tableQueries = [
     ["jobCases", "SELECT * FROM job_cases ORDER BY created_at ASC"],
@@ -382,6 +403,7 @@ async function exportOperationalSnapshot(pool) {
   }
   return snapshot;
 }
+
 async function listActiveMembershipRows(client, userId) {
   const result = await client.query(
     `
@@ -401,7 +423,6 @@ async function listActiveMembershipRows(client, userId) {
   );
   return normalizeRows(result.rows);
 }
-
 async function buildSessionPayloadFromClient(client, session) {
   const normalizedSession = normalizeRow(session);
   if (!normalizedSession || normalizedSession.revoked_at) {
@@ -653,7 +674,36 @@ export function createPostgresRepositoryBundle({
             agreements: counts[2].rows[0]?.count || 0
           }
         };
-      }
+      },
+      listRecentBackups: async (limit = 10) => listRecentBackupsFromDirectory(limit),
+      getOpsSnapshot: async (limit = 5) => ({
+        storage: await (async () => {
+          const counts = await Promise.all([
+            pool.query("SELECT COUNT(*)::int AS count FROM job_cases"),
+            pool.query("SELECT COUNT(*)::int AS count FROM field_records"),
+            pool.query("SELECT COUNT(*)::int AS count FROM agreement_records")
+          ]);
+          return {
+            storageEngine: "POSTGRES",
+            objectStorageProvider: config.objectStorageProvider,
+            databaseUrlMasked: maskDatabaseUrl(databaseUrl),
+            backupDir: config.backupDir,
+            updatedAt: new Date().toISOString(),
+            counts: {
+              jobCases: counts[0].rows[0]?.count || 0,
+              fieldRecords: counts[1].rows[0]?.count || 0,
+              agreements: counts[2].rows[0]?.count || 0
+            }
+          };
+        })(),
+        backups: await listRecentBackupsFromDirectory(limit),
+        runtime: {
+          nodeEnv: config.nodeEnv,
+          appBaseUrl: config.appBaseUrl || null,
+          objectStorageProvider: config.objectStorageProvider,
+          storageEngine: "POSTGRES"
+        }
+      })
     },
     jobCaseRepository: {
       listByScope: async (scope = {}) => {

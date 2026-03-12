@@ -463,3 +463,118 @@ body.review-copy #timeline-card {
   color: var(--primary-strong);
   font-weight: 800;
 }
+
+.ops-body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(13, 110, 253, 0.16), transparent 26%),
+    linear-gradient(180deg, #f8fbff 0%, #eef3f7 100%);
+}
+.ops-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+.ops-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+.ops-copy {
+  margin-top: 12px;
+  max-width: 720px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.ops-actions-top {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.ops-card,
+.ops-panel {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(212, 220, 230, 0.88);
+  border-radius: 24px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+.ops-card-label {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--primary-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.ops-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 26px;
+}
+.ops-layout {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.ops-definition-list {
+  display: grid;
+  gap: 12px;
+}
+.ops-definition-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(212, 220, 230, 0.72);
+}
+.ops-definition-list dt {
+  color: var(--muted);
+}
+.ops-definition-list dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+.ops-backup-list {
+  display: grid;
+  gap: 10px;
+}
+.ops-backup-item {
+  border-radius: 18px;
+  border: 1px solid rgba(212, 220, 230, 0.88);
+  background: rgba(248, 251, 255, 0.95);
+  padding: 14px;
+}
+.ops-backup-item strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.ops-backup-item p {
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+.ops-backup-item span {
+  color: var(--primary-strong);
+  font-size: 13px;
+  word-break: break-all;
+}
+@media (max-width: 960px) {
+  .ops-grid,
+  .ops-layout {
+    grid-template-columns: 1fr;
+  }
+  .ops-hero {
+    flex-direction: column;
+  }
+}
