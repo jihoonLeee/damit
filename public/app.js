@@ -32,6 +32,23 @@ const reasonLabels = {
   OTHER: "기타"
 };
 
+const timelineTypeLabels = {
+  FIELD_RECORD_LINKED: "현장 기록 연결",
+  QUOTE_UPDATED: "변경 견적 저장",
+  DRAFT_CREATED: "설명 초안 생성",
+  CUSTOMER_CONFIRMATION_LINK_CREATED: "고객 확인 링크 발급",
+  CUSTOMER_CONFIRMATION_ACKNOWLEDGED: "고객 확인 완료",
+  AGREEMENT_RECORDED: "합의 기록 저장"
+};
+
+function describeReason(item) {
+  return reasonLabels[item.secondaryReason] || reasonLabels[item.primaryReason] || "사유 확인 필요";
+}
+
+function describeTimelineTitle(item) {
+  return timelineTypeLabels[item.type] || "작업 이력";
+}
+
 const state = {
   filterStatus: "ALL",
   query: "",
@@ -450,9 +467,9 @@ function renderJobCases() {
           </div>
           <span class="status-badge ${item.currentStatus}">${statusLabels[item.currentStatus] || item.currentStatus}</span>
         </div>
-        <p>${reasonLabels[item.secondaryReason] || reasonLabels[item.primaryReason] || "사유 미정"}</p>
-        <p>원래 ${formatMoney(item.originalQuoteAmount)} / 변경 ${formatMoney(item.revisedQuoteAmount)}</p>
-        <p>${item.hasAgreementRecord ? "합의 기록 있음" : "합의 기록 없음"} · ${new Date(item.updatedAt).toLocaleString("ko-KR")}</p>
+        <p>최근 이슈 - ${describeReason(item)}</p>
+        <p>견적 - ?? ${formatMoney(item.originalQuoteAmount)} / ?? ${formatMoney(item.revisedQuoteAmount)}</p>
+        <p>${item.hasAgreementRecord ? "합의 기록이 남아 있습니다" : "아직 합의 기록이 없습니다"} - 마지막 업데이트 ${new Date(item.updatedAt).toLocaleString("ko-KR")}</p>
       </article>
     `)
     .join("");
@@ -561,12 +578,12 @@ async function loadJobCaseDetail(jobCaseId) {
   renderCustomerConfirmationState(detail);
 
   elements.fieldRecordsDetail.innerHTML = detail.fieldRecords.length === 0
-    ? `<div class="empty-state">현장 기록이 아직 연결되지 않았습니다.</div>`
+    ? `<div class="empty-state">이 작업 건에 연결된 현장 기록이 아직 없습니다.</div>`
     : detail.fieldRecords.map((record) => `
         <article class="record-card">
-          <strong>${reasonLabels[record.secondaryReason] || reasonLabels[record.primaryReason] || "사유 없음"}</strong>
-          <p>${record.note || "메모 없음"}</p>
-          <p>${new Date(record.createdAt).toLocaleString("ko-KR")}</p>
+          <strong>확인 사유 - ${reasonLabels[record.secondaryReason] || reasonLabels[record.primaryReason] || "사유 확인 필요"}</strong>
+          <p>${record.note || "메모 없이 저장된 기록입니다."}</p>
+          <p>기록 시각 - ${new Date(record.createdAt).toLocaleString("ko-KR")}</p>
           <div class="record-photos">
             ${record.photos.map((photo) => `<img src="${photo.url}" alt="현장 기록 사진" />`).join("")}
           </div>
@@ -574,10 +591,11 @@ async function loadJobCaseDetail(jobCaseId) {
       `).join("");
 
   elements.timeline.innerHTML = timeline.items.length === 0
-    ? `<div class="empty-state">타임라인이 아직 없습니다.</div>`
+    ? `<div class="empty-state">아직 남겨진 작업 이력이 없습니다.</div>`
     : timeline.items.map((item) => `
         <article class="timeline-item">
-          <strong>${item.summary}</strong>
+          <strong>${describeTimelineTitle(item)}</strong>
+          <p>${item.summary || "세부 설명이 아직 남겨지지 않았습니다."}</p>
           <span>${new Date(item.createdAt).toLocaleString("ko-KR")}</span>
         </article>
       `).join("");

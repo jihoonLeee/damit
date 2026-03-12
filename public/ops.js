@@ -102,12 +102,22 @@ function renderSnapshot(health, snapshot) {
   elements.runtimeMode.textContent = snapshot.runtime.storageEngine || "unknown";
   elements.runtimeMeta.textContent = `nodeEnv=${snapshot.runtime.nodeEnv || "-"}, objectStorage=${snapshot.runtime.objectStorageProvider || "-"}`;
 
+  if (snapshot.release?.tag) {
+    elements.healthMeta.textContent = `service=${health.service} / ${new Date(health.timestamp).toLocaleString("ko-KR")} / release=${snapshot.release.tag}`;
+  }
+
+  const releaseLabel = snapshot.release?.tag || "로컬 실행 또는 수동 배포";
+  const releaseMeta = snapshot.release?.publishedAt
+    ? `${releaseLabel} / ${new Date(snapshot.release.publishedAt).toLocaleString("ko-KR")}`
+    : releaseLabel;
+
   elements.snapshotList.innerHTML = [
     ["앱 Base URL", snapshot.runtime.appBaseUrl || "-"],
     ["Object Storage", snapshot.runtime.objectStorageProvider || "-"],
     ["작업 건 수", String(snapshot.storage.counts?.jobCases ?? 0)],
     ["현장 기록 수", String(snapshot.storage.counts?.fieldRecords ?? 0)],
-    ["합의 기록 수", String(snapshot.storage.counts?.agreements ?? 0)]
+    ["합의 기록 수", String(snapshot.storage.counts?.agreements ?? 0)],
+    ["배포 버전", releaseMeta]
   ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("");
 
   if (!snapshot.backups?.length) {

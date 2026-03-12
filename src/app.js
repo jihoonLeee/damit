@@ -1,7 +1,4 @@
-﻿import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
-import { createReadStream } from "node:fs";
+﻿import crypto from "node:crypto";
 
 import { config } from "./config.js";
 import {
@@ -15,9 +12,7 @@ import {
 import { HttpError, createRequestId, json, notFound, readJsonBody, sendError } from "./http.js";
 import { parseMultipart } from "./multipart.js";
 import { createId, ensureStorage, nowIso, saveUpload } from "./store.js";
-import { resolveLocalUploadPath } from "./object-storage/createObjectStorage.js";
 import {
-  assertAuthenticated,
   validateAgreementPayload,
   validateCustomerConfirmationAcknowledgement,
   validateCustomerConfirmationLinkPayload,
@@ -35,24 +30,9 @@ import {
   refreshSessionFromRequest
 } from "./contexts/auth/application/auth-runtime.js";
 import { sendInvitationEmail, sendMagicLinkEmail } from "./mail-gateway.js";
-import { runPostgresPreflight } from "./db/postgres-preflight.js";
 import { createRepositoryBundle } from "./repositories/createRepositoryBundle.js";
-
-const mimeTypes = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp"
-};
-
-function normalizePathname(urlValue) {
-  return new URL(urlValue, "http://localhost").pathname;
-}
+import { normalizePathname, serveStaticRequest } from "./http/static-routes.js";
+import { handleSystemApiRequest } from "./http/system-routes.js";
 
 export function createApp() {
   const repositories = createRepositoryBundle();
@@ -70,53 +50,7 @@ export function createApp() {
           return;
         }
 
-        if (pathname.startsWith("/uploads/")) {
-          if (String(config.objectStorageProvider || "LOCAL_VOLUME").toUpperCase() !== "LOCAL_VOLUME") {
-            notFound(response);
-            return;
-          }
-
-          const uploadObjectKey = pathname.replace("/uploads/", "");
-          await serveFile(response, resolveLocalUploadPath(config.uploadDir, uploadObjectKey));
-          return;
-        }
-
-        if (pathname === "/" || pathname === "/landing") {
-          await serveFile(response, path.join(config.publicDir, "landing.html"));
-          return;
-        }
-
-        if (pathname === "/login") {
-          await serveFile(response, path.join(config.publicDir, "login.html"));
-          return;
-        }
-
-        if (pathname === "/beta-home") {
-          await serveFile(response, path.join(config.publicDir, "beta-home.html"));
-          return;
-        }
-
-        if (pathname === "/beta-app") {
-          await serveFile(response, path.join(config.publicDir, "beta-app.html"));
-          return;
-        }
-
-        if (pathname.startsWith("/confirm/")) {
-          await serveFile(response, path.join(config.publicDir, "confirm.html"));
-          return;
-        }
-
-        if (pathname === "/app") {
-          await serveFile(response, path.join(config.publicDir, "index.html"));
-          return;
-        }
-
-        if (pathname === "/ops") {
-          await serveFile(response, path.join(config.publicDir, "ops.html"));
-          return;
-        }
-
-        await serveFile(response, path.join(config.publicDir, pathname));
+        await serveStaticRequest(pathname, response);
       } catch (error) {
         sendError(response, requestId, error);
       }
@@ -127,6 +61,10 @@ export function createApp() {
 async function handleApiRequest(request, response, repositories) {
   const url = new URL(request.url, "http://localhost");
   const pathname = url.pathname;
+
+  if (await handleSystemApiRequest(request, response, pathname, repositories)) {
+    return;
+  }
 
   if (request.method === "GET" && pathname === "/api/v1/health") {
     const storage = await repositories.systemRepository.getStorageSummary();
@@ -388,60 +326,6 @@ async function handleApiRequest(request, response, repositories) {
         status: delivery.status
       },
       ...(delivery.debugInvitationLink ? { debugInvitationLink: delivery.debugInvitationLink } : {})
-    });
-    return;
-  }
-
-  if (request.method === "GET" && pathname === "/api/v1/admin/storage-status") {
-    assertAuthenticated(request);
-    const storage = await repositories.systemRepository.getStorageSummary();
-    json(response, 200, storage);
-    return;
-  }
-
-  if (request.method === "GET" && pathname === "/api/v1/admin/ops-snapshot") {
-    assertAuthenticated(request);
-    const snapshot = await repositories.systemRepository.getOpsSnapshot(5);
-    json(response, 200, snapshot);
-    return;
-  }
-
-  if (request.method === "GET" && pathname === "/api/v1/admin/postgres-preflight") {
-    assertAuthenticated(request);
-    if (!config.databaseUrl) {
-      throw new HttpError(409, "POSTGRES_NOT_CONFIGURED", "Managed Postgres \uC5F0\uACB0 \uC815\uBCF4\uAC00 \uC544\uC9C1 \uC124\uC815\uB418\uC9C0 \uC54A\uC558\uC5B4\uC694");
-    }
-    const report = await runPostgresPreflight({
-      databaseUrl: config.databaseUrl,
-      sslMode: config.postgresSslMode,
-      sslRequire: config.postgresSslRequire,
-      sslCaPath: config.postgresSslCaPath,
-      applicationName: config.postgresApplicationName,
-      maxPoolSize: config.postgresPoolMax
-    });
-    json(response, 200, report);
-    return;
-  }
-  if (request.method === "POST" && pathname === "/api/v1/admin/backup") {
-    assertAuthenticated(request);
-    const payload = await readJsonBody(request);
-    const backup = await repositories.systemRepository.createBackup(payload.label || "pilot");
-    json(response, 201, backup);
-    return;
-  }
-
-  if (request.method === "POST" && pathname === "/api/v1/admin/reset-data") {
-    assertAuthenticated(request);
-    const payload = await readJsonBody(request);
-    if (payload.confirm !== "RESET_PILOT_DATA") {
-      throw new HttpError(400, "RESET_CONFIRMATION_REQUIRED", "\uB9AC\uC14B \uD655\uC778 \uBB38\uAD6C\uB97C \uC815\uD655\uD788 \uC785\uB825\uD574\uC8FC\uC138\uC694");
-    }
-    await repositories.systemRepository.createBackup("before-reset");
-    const storage = await repositories.systemRepository.resetAllData();
-    json(response, 200, {
-      ok: true,
-      storageEngine: storage.storageEngine,
-      counts: storage.counts
     });
     return;
   }
@@ -1156,44 +1040,3 @@ function extractRefreshToken(request) {
     .map((part) => part.split("="))
     .find(([name]) => name === config.refreshCookieName)?.[1] || "";
 }
-
-async function serveFile(response, filePath) {
-  try {
-    const stat = await fs.stat(filePath);
-    if (stat.isDirectory()) {
-      await serveFile(response, path.join(filePath, "index.html"));
-      return;
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    response.writeHead(200, {
-      "Content-Type": mimeTypes[ext] || "application/octet-stream"
-    });
-    createReadStream(filePath).pipe(response);
-  } catch {
-    notFound(response);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
