@@ -49,6 +49,7 @@ Required files already exist in the repo:
 1. copy `.env.example` to `.env`
 2. set:
    - `APP_BASE_URL`
+   - default host port for this project is `3100`
    - `OWNER_TOKEN`
    - `OWNER_ID`
    - optional mail settings
