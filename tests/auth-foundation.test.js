@@ -1,4 +1,4 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
@@ -108,11 +108,11 @@ test("auth verify creates a session and /me returns company context", async () =
   const challenge = await issueChallenge("boss@example.com");
   const verify = await verifyViaLink(challenge.payload.debugMagicLink, {
     displayName: "김대표",
-    companyName: "클린홈 송파점"
+    companyName: "다밋 송파"
   });
 
   assert.equal(verify.response.status, 200);
-  assert.equal(verify.payload.company.name, "클린홈 송파점");
+  assert.equal(verify.payload.company.name, "다밋 송파");
 
   const cookieHeader = readCookiesFromResponse(verify.response);
   assert.ok(cookieHeader.includes(`${config.sessionCookieName}=`));
@@ -126,7 +126,7 @@ test("auth verify creates a session and /me returns company context", async () =
   assert.equal(meResponse.status, 200);
   const mePayload = await meResponse.json();
   assert.equal(mePayload.user.displayName, "김대표");
-  assert.equal(mePayload.company.name, "클린홈 송파점");
+  assert.equal(mePayload.company.name, "다밋 송파");
   assert.equal(mePayload.company.role, "OWNER");
   assert.equal(mePayload.companies.length, 1);
 });
@@ -134,7 +134,7 @@ test("auth verify creates a session and /me returns company context", async () =
 test("auth refresh rotates refresh cookie and preserves company context", async () => {
   const challenge = await issueChallenge("refresh@example.com");
   const verify = await verifyViaLink(challenge.payload.debugMagicLink, {
-    displayName: "새로고침",
+    displayName: "리프레시 운영자",
     companyName: "리프레시 클린"
   });
   const cookieHeader = readCookiesFromResponse(verify.response);
@@ -158,7 +158,7 @@ test("auth refresh rotates refresh cookie and preserves company context", async 
 test("owner can invite a user, invited user joins second company, and switches context", async () => {
   const ownerOneChallenge = await issueChallenge("owner-one@example.com");
   const ownerOneVerify = await verifyViaLink(ownerOneChallenge.payload.debugMagicLink, {
-    displayName: "오너원",
+    displayName: "오너1",
     companyName: "청소 1호점"
   });
   const ownerOneCookie = readCookiesFromResponse(ownerOneVerify.response);
@@ -166,7 +166,7 @@ test("owner can invite a user, invited user joins second company, and switches c
 
   const ownerTwoChallenge = await issueChallenge("owner-two@example.com");
   const ownerTwoVerify = await verifyViaLink(ownerTwoChallenge.payload.debugMagicLink, {
-    displayName: "오너투",
+    displayName: "오너2",
     companyName: "청소 2호점"
   });
   const ownerTwoCookie = readCookiesFromResponse(ownerTwoVerify.response);
@@ -254,18 +254,11 @@ test("static entry routes are served for landing, login, home, ops, and app", as
   const landing = await fetch(`${baseUrl}/`);
   const login = await fetch(`${baseUrl}/login`);
   const home = await fetch(`${baseUrl}/home`);
-  const legacyHome = await fetch(`${baseUrl}/beta-home`, { redirect: "manual" });
-  const legacyApp = await fetch(`${baseUrl}/beta-app`, { redirect: "manual" });
   const opsPage = await fetch(`${baseUrl}/ops`);
   const appPage = await fetch(`${baseUrl}/app`);
   assert.equal(landing.status, 200);
   assert.equal(login.status, 200);
   assert.equal(home.status, 200);
-  assert.equal(legacyHome.status, 302);
-  assert.equal(legacyHome.headers.get("location"), "/home");
-  assert.equal(legacyApp.status, 302);
-  assert.equal(legacyApp.headers.get("location"), "/app");
   assert.equal(opsPage.status, 200);
   assert.equal(appPage.status, 200);
 });
-

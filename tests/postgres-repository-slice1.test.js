@@ -282,7 +282,7 @@ test("postgres repository detail reads return tenant-ready shape", async () => {
   await bundle.close();
 });
 
-test("postgres auth company list maps memberships for beta company context", async () => {
+test("postgres auth company list maps memberships for company context", async () => {
   const bundle = createRepositoryBundle({ engine: "POSTGRES", pool: createFakePool() });
 
   const companies = await bundle.authRepository.listCompaniesForUser("user_owner");
@@ -330,3 +330,4 @@ test("postgres audit repository appends and lists JSON payload logs", async () =
 
   await bundle.close();
 });
+

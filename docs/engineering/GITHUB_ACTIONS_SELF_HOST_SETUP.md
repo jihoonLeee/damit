@@ -1,4 +1,4 @@
-# GITHUB_ACTIONS_SELF_HOST_SETUP
+﻿# GITHUB_ACTIONS_SELF_HOST_SETUP
 
 ## Goal
 
@@ -14,6 +14,15 @@ Make GitHub Actions deploy to the Ubuntu self-host environment through Tailscale
 - `SELF_HOST_SSH_USER`
 - `SELF_HOST_SSH_KEY`
 - `SELF_HOST_APP_DIR`
+
+## Temporary fallback
+
+If OAuth client secrets are not yet present, the current workflows still fall back to:
+
+- `TAILSCALE_AUTHKEY`
+
+This fallback is temporary and exists only to keep the working self-host deploy path healthy.
+Once OAuth secrets are added and verified, the fallback should be removed.
 
 ## Recommended values
 
@@ -39,7 +48,8 @@ Make GitHub Actions deploy to the Ubuntu self-host environment through Tailscale
 
 ## Security posture
 
-- Tailscale connectivity uses OAuth client credentials only
+- preferred path: Tailscale OAuth client credentials
+- temporary compatibility path: `TAILSCALE_AUTHKEY` fallback
 - GitHub Actions SSH uses a dedicated deploy key, not a personal interactive key
 - server `.env` is preserved during sync
 - deploy still runs over a private Tailscale route
@@ -50,4 +60,5 @@ After secrets are set, verify:
 
 1. `Self-Host Deploy` can run successfully from Actions
 2. `Self-Host Release Deploy` is available for `v*` releases
-3. no Tailscale `authkey` deprecation warning appears in workflow logs
+3. workflow dispatch remains available
+4. once OAuth secrets are present, no Tailscale `authkey` deprecation warning appears in workflow logs

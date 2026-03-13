@@ -1,4 +1,4 @@
-name: Self-Host Release Deploy
+﻿name: Self-Host Release Deploy
 
 on:
   release:
@@ -10,8 +10,6 @@ permissions:
 
 env:
   TAILSCALE_TAGS: ${{ secrets.TAILSCALE_TAGS != '' && secrets.TAILSCALE_TAGS || 'tag:ci' }}
-  TAILSCALE_OAUTH_CLIENT_ID_PRESENT: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID != '' }}
-  TAILSCALE_OAUTH_SECRET_PRESENT: ${{ secrets.TAILSCALE_OAUTH_SECRET != '' }}
 
 concurrency:
   group: self-host-release-deploy-${{ github.event.release.tag_name }}
@@ -28,7 +26,7 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Join Tailscale network (OAuth client)
-        if: ${{ env.TAILSCALE_OAUTH_CLIENT_ID_PRESENT == 'true' && env.TAILSCALE_OAUTH_SECRET_PRESENT == 'true' }}
+        if: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID != '' && secrets.TAILSCALE_OAUTH_SECRET != '' }}
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
@@ -38,7 +36,7 @@ jobs:
           ping: ${{ secrets.SELF_HOST_TAILNET_HOST }}
 
       - name: Join Tailscale network (Auth key fallback)
-        if: ${{ env.TAILSCALE_OAUTH_CLIENT_ID_PRESENT != 'true' || env.TAILSCALE_OAUTH_SECRET_PRESENT != 'true' }}
+        if: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID == '' || secrets.TAILSCALE_OAUTH_SECRET == '' }}
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
@@ -47,28 +45,15 @@ jobs:
 
       - name: Start SSH agent
         shell: bash
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SELF_HOST_SSH_KEY }}
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
-          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/github_actions_deploy_key
-          printf '
-' >> ~/.ssh/github_actions_deploy_key
-          python - <<'PY'
-          from pathlib import Path
-          key_path = Path.home() / '.ssh' / 'github_actions_deploy_key'
-          content = key_path.read_text(encoding='utf-8')
-          key_path.write_text(content.replace('
-', '
-').replace('', '
-'), encoding='utf-8')
-          PY
+          cat > ~/.ssh/github_actions_deploy_key <<'EOF'
+          ${{ secrets.SELF_HOST_SSH_KEY }}
+          EOF
           chmod 600 ~/.ssh/github_actions_deploy_key
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/github_actions_deploy_key
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
-          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
 
       - name: Trust server host key
         shell: bash
@@ -81,13 +66,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rsync -az --delete             --filter='P deploy/homelab/.env'             --exclude '.git/'             --exclude 'node_modules/'             --exclude 'data/'             --exclude 'output/'             --exclude '.fly-config/'             ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
+          rsync -az --delete \
+            --filter='P deploy/homelab/.env' \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'data/' \
+            --exclude 'output/' \
+            --exclude '.fly-config/' \
+            ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
 
       - name: Deploy on server
         shell: bash
         run: |
           set -euo pipefail
-          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}"             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/deploy.sh"
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/deploy.sh"
 
       - name: Build release metadata file
         shell: bash
@@ -111,4 +104,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}"             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/smoke.sh"
+          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/smoke.sh"

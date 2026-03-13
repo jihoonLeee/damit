@@ -1,4 +1,4 @@
-import fs from "node:fs/promises";
+﻿import fs from "node:fs/promises";
 import path from "node:path";
 import { createReadStream } from "node:fs";
 
@@ -27,11 +27,6 @@ const publicRouteMap = new Map([
   ["/ops", "ops.html"]
 ]);
 
-const legacyRedirectMap = new Map([
-  ["/beta-home", "/home"],
-  ["/beta-app", "/app"]
-]);
-
 export function normalizePathname(urlValue) {
   return new URL(urlValue, "http://localhost").pathname;
 }
@@ -50,12 +45,6 @@ export async function serveStaticRequest(pathname, response) {
 
   if (pathname.startsWith("/confirm/")) {
     await serveFile(response, path.join(config.publicDir, "confirm.html"));
-    return true;
-  }
-
-  if (legacyRedirectMap.has(pathname)) {
-    response.writeHead(302, { Location: legacyRedirectMap.get(pathname) });
-    response.end();
     return true;
   }
 
