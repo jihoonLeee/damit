@@ -17,14 +17,16 @@ The self-host deploy workflow had regressed in two ways:
 - the self-host deploy path now uses a direct deploy key file for `rsync`, `ssh`, and `scp`
 - manual dispatch is healthy again
 - release deploy workflow was aligned with the same key handling pattern
+- OAuth-based Tailscale connection is now the active deployment path
 
 ## Evidence
 
 - workflow: `.github/workflows/self-host-deploy.yml`
 - workflow: `.github/workflows/self-host-release-deploy.yml`
-- successful run: `23032231660`
+- successful OAuth run: `23032844181`
+- URL: `https://github.com/jihoonLeee/damit/actions/runs/23032844181`
 
 ## PM close-out
 
 The self-host deployment path is healthy again.
-The remaining Tailscale warning is not a workflow correctness issue anymore; it is a repository secret readiness issue.
+The previous Tailscale deprecation warning is no longer present in the successful working path.
