@@ -1,4 +1,4 @@
-﻿import crypto from "node:crypto";
+import crypto from "node:crypto";
 
 import { config } from "../../../config.js";
 import { HttpError } from "../../../http.js";
@@ -55,32 +55,20 @@ export function assertCsrf(request) {
   const cookieToken = cookies[config.csrfCookieName];
   const headerToken = request.headers["x-csrf-token"];
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-    throw new HttpError(403, "CSRF_TOKEN_INVALID", "보안 토큰이 올바르지 않아요");
+    throw new HttpError(403, "CSRF_TOKEN_INVALID", "CSRF 토큰이 유효하지 않습니다.");
   }
 }
 
 export async function getAuthContext(request, repositories) {
-  const authorization = request.headers.authorization || "";
-  if (authorization === `Bearer ${config.ownerToken}`) {
-    return {
-      mode: "OWNER_TOKEN",
-      userId: config.ownerId,
-      displayName: "Owner",
-      companyId: null,
-      companyName: "Pilot",
-      role: "OWNER"
-    };
-  }
-
   const cookies = parseCookies(request.headers.cookie || "");
   const sessionId = cookies[config.sessionCookieName];
   if (!sessionId) {
-    throw new HttpError(401, "UNAUTHORIZED", "다시 로그인해주세요");
+    throw new HttpError(401, "UNAUTHORIZED", "로그인이 필요합니다.");
   }
 
   const context = await repositories.authRepository.getSessionContext(sessionId);
   if (!context) {
-    throw new HttpError(401, "AUTH_SESSION_INVALID", "세션이 유효하지 않아요. 다시 로그인해주세요");
+    throw new HttpError(401, "AUTH_SESSION_INVALID", "세션이 유효하지 않습니다. 다시 로그인해 주세요.");
   }
 
   return {
@@ -95,8 +83,7 @@ export async function refreshSessionFromRequest(request, repositories) {
   const cookies = parseCookies(request.headers.cookie || "");
   const refreshToken = cookies[config.refreshCookieName];
   if (!refreshToken) {
-    throw new HttpError(401, "AUTH_REFRESH_INVALID", "세션을 다시 시작해주세요");
+    throw new HttpError(401, "AUTH_REFRESH_INVALID", "리프레시 세션이 유효하지 않습니다.");
   }
   return repositories.authRepository.refreshSessionByRefreshToken(refreshToken);
 }
-

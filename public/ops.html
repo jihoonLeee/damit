@@ -6,17 +6,17 @@
   <title>다밋 운영 콘솔</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body class="ops-body" data-auth-mode="owner-token">
+<body class="ops-body" data-auth-mode="session">
   <div class="ops-shell">
     <header class="ops-hero">
       <div>
         <p class="eyebrow">DAMIT OPS</p>
-        <h1>다밋 운영 콘솔</h1>
-        <p class="ops-copy">로컬 및 self-host 단일 노드 운영 상태를 빠르게 확인하고, 즉시 백업을 남길 수 있는 내부 운영 화면입니다.</p>
+        <h1>운영 콘솔</h1>
+        <p class="ops-copy">현재 런타임 상태, 저장소 현황, 최근 백업과 배포 버전을 한 곳에서 확인하는 owner 전용 운영 화면입니다.</p>
       </div>
       <div class="ops-actions-top">
         <a class="ghost-button" href="/app">작업 화면</a>
-        <a class="ghost-button" href="/login">로그인</a>
+        <a class="ghost-button" href="/home">운영 홈</a>
       </div>
     </header>
 
@@ -24,17 +24,17 @@
       <article class="ops-card">
         <span class="ops-card-label">서비스 상태</span>
         <strong id="ops-health-status">확인 중</strong>
-        <p id="ops-health-meta" class="helper-text">health endpoint를 확인하고 있습니다.</p>
+        <p id="ops-health-meta" class="helper-text">health endpoint 응답을 기다리고 있습니다.</p>
       </article>
       <article class="ops-card">
         <span class="ops-card-label">저장소</span>
         <strong id="ops-storage-engine">확인 중</strong>
-        <p id="ops-storage-meta" class="helper-text">storage summary를 불러오고 있습니다.</p>
+        <p id="ops-storage-meta" class="helper-text">storage summary 응답을 기다리고 있습니다.</p>
       </article>
       <article class="ops-card">
         <span class="ops-card-label">런타임</span>
         <strong id="ops-runtime-mode">확인 중</strong>
-        <p id="ops-runtime-meta" class="helper-text">runtime metadata를 불러오고 있습니다.</p>
+        <p id="ops-runtime-meta" class="helper-text">runtime metadata 응답을 기다리고 있습니다.</p>
       </article>
     </section>
 
@@ -50,7 +50,7 @@
         <form id="ops-backup-form" class="stack">
           <label class="field">
             <span>백업 라벨</span>
-            <input type="text" id="ops-backup-label" maxlength="40" placeholder="manual-check" />
+            <input type="text" id="ops-backup-label" maxlength="40" placeholder="ops-manual" />
           </label>
           <button type="submit" class="primary-button" id="ops-backup-submit">백업 만들기</button>
         </form>
@@ -65,7 +65,7 @@
           </div>
         </div>
         <dl class="ops-definition-list" id="ops-snapshot-list">
-          <div><dt>앱 Base URL</dt><dd>확인 중</dd></div>
+          <div><dt>App Base URL</dt><dd>확인 중</dd></div>
           <div><dt>Object Storage</dt><dd>확인 중</dd></div>
           <div><dt>작업 건 수</dt><dd>확인 중</dd></div>
           <div><dt>현장 기록 수</dt><dd>확인 중</dd></div>
@@ -83,7 +83,7 @@
         </div>
       </div>
       <div id="ops-backups" class="ops-backup-list">
-        <div class="empty-state">최근 백업을 불러오는 중입니다.</div>
+        <div class="empty-state">아직 생성된 백업이 없습니다.</div>
       </div>
     </section>
   </div>

@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), "field-agreement-beta-"));
+const tempRoot = await mkdtemp(path.join(os.tmpdir(), "damit-workspace-"));
 process.chdir(tempRoot);
 
 const { createApp } = await import("../src/app.js");
@@ -25,7 +25,7 @@ config.mailProvider = "FILE";
 config.appBaseUrl = "";
 
 await fs.mkdir(config.publicDir, { recursive: true });
-for (const fileName of ["landing.html", "login.html", "beta-home.html", "beta-app.html", "index.html"]) {
+for (const fileName of ["landing.html", "login.html", "home.html", "ops.html", "index.html", "confirm.html"]) {
   await fs.writeFile(path.join(config.publicDir, fileName), "<html></html>", "utf8");
 }
 
@@ -109,7 +109,7 @@ async function createJobCase(cookieHeader, csrfToken, customerLabel) {
     body: JSON.stringify({
       customerLabel,
       siteLabel: customerLabel,
-      contactMemo: "beta flow",
+      contactMemo: "workspace flow",
       originalQuoteAmount: 250000
     })
   });

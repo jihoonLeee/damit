@@ -1,5 +1,5 @@
-﻿const card = document.querySelector("#beta-home-card");
-const feedback = document.querySelector("#beta-feedback");
+﻿const card = document.querySelector("#home-summary-card");
+const feedback = document.querySelector("#home-feedback");
 const logoutButton = document.querySelector("#logout-button");
 const activeCompanyChip = document.querySelector("#active-company-chip");
 const companySwitcher = document.querySelector("#company-switcher");
@@ -10,6 +10,7 @@ const inviteForm = document.querySelector("#invite-form");
 const inviteFeedback = document.querySelector("#invite-feedback");
 const inviteDebugLink = document.querySelector("#invite-debug-link");
 const invitationList = document.querySelector("#invitation-list");
+const opsLink = document.querySelector("#ops-link");
 
 const state = {
   me: null,
@@ -35,15 +36,18 @@ function setFeedback(target, message, type = "") {
   target.className = `feedback ${type}`.trim();
 }
 
-async function request(url, options = {}) {
+async function request(url, options = {}, allowRetry = true) {
   const headers = {
     ...(options.headers || {})
   };
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = headers["Content-Type"] || "application/json";
   }
-  if (options.method && options.method !== "GET" && state.csrfToken) {
-    headers["x-csrf-token"] = state.csrfToken;
+  if (options.method && options.method !== "GET") {
+    const csrfToken = state.csrfToken || readCookie("faa_csrf");
+    if (csrfToken) {
+      headers["x-csrf-token"] = csrfToken;
+    }
   }
 
   const response = await fetch(url, {
@@ -53,7 +57,16 @@ async function request(url, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload?.error?.message || "요청에 실패했습니다.");
+    if ((response.status === 401 || response.status === 403) && allowRetry) {
+      try {
+        await request("/api/v1/auth/refresh", { method: "POST" }, false);
+        return request(url, options, false);
+      } catch {
+        window.location.href = "/login";
+        throw new Error("세션이 만료되었습니다.");
+      }
+    }
+    const error = new Error(payload?.error?.message || "요청을 처리하지 못했습니다.");
     error.code = payload?.error?.code;
     throw error;
   }
@@ -71,13 +84,13 @@ function renderCompanySwitcher() {
 
 function renderMemberships(items) {
   if (!items.length) {
-    membershipList.className = "beta-list empty-state";
-    membershipList.textContent = "아직 연결된 멤버가 없습니다.";
+    membershipList.className = "home-list empty-state";
+    membershipList.textContent = "아직 활성 멤버가 없습니다.";
     return;
   }
-  membershipList.className = "beta-list";
+  membershipList.className = "home-list";
   membershipList.innerHTML = items.map((item) => `
-    <article class="beta-list-item">
+    <article class="home-list-item">
       <strong>${item.displayName || item.email}</strong>
       <p>${item.email}</p>
       <span>${item.role} · ${item.status}</span>
@@ -87,13 +100,13 @@ function renderMemberships(items) {
 
 function renderInvitations(items) {
   if (!items.length) {
-    invitationList.className = "beta-list empty-state";
-    invitationList.textContent = "아직 발송된 초대가 없습니다.";
+    invitationList.className = "home-list empty-state";
+    invitationList.textContent = "발송된 초대가 아직 없습니다.";
     return;
   }
-  invitationList.className = "beta-list";
+  invitationList.className = "home-list";
   invitationList.innerHTML = items.map((item) => `
-    <article class="beta-list-item">
+    <article class="home-list-item">
       <strong>${item.email}</strong>
       <p>${item.role} · ${item.status}</p>
       <span>만료 ${new Date(item.expiresAt).toLocaleString("ko-KR")}</span>
@@ -107,18 +120,22 @@ async function loadMe() {
   state.companies = payload.companies || [];
   state.csrfToken = readCookie("faa_csrf");
   setCard(
-    `${payload.user.displayName || payload.user.email} 로그인 완료`,
+    `${payload.user.displayName || payload.user.email}님, 반갑습니다.`,
     payload.company
-      ? `${payload.company.name} · ${payload.company.role} 컨텍스트가 활성화되어 있습니다. 현재는 beta auth foundation 단계라 실제 현장 데이터 앱은 /beta-app에서 이어집니다.`
-      : "현재는 owner token 기반 파일럿 워크스페이스와 분리된 auth foundation 단계입니다."
+      ? `${payload.company.name}에서 ${payload.company.role} 권한으로 로그인되어 있습니다. 운영 홈에서 회사 전환, 멤버 확인, 초대 관리를 이어서 처리할 수 있습니다.`
+      : "아직 연결된 회사가 없습니다. 로그인 절차를 다시 확인해 주세요."
   );
   renderCompanySwitcher();
+  if (opsLink) {
+    opsLink.classList.toggle("hidden", payload.company?.role !== "OWNER");
+  }
 }
 
 async function loadMembersAndInvites() {
   if (!state.me?.company?.id) {
     renderMemberships([]);
     renderInvitations([]);
+    invitationSection.classList.add("hidden");
     return;
   }
 
@@ -143,7 +160,7 @@ switchCompanyButton.addEventListener("click", async () => {
     state.companies = payload.companies || state.companies;
     renderCompanySwitcher();
     await loadMembersAndInvites();
-    setFeedback(feedback, `${payload.company.name} 컨텍스트로 전환했습니다.`, "success");
+    setFeedback(feedback, `${payload.company.name}로 전환되었습니다.`, "success");
   } catch (error) {
     setFeedback(feedback, error.message, "error");
   }
@@ -159,10 +176,10 @@ inviteForm?.addEventListener("submit", async (event) => {
         role: document.querySelector("#invite-role").value
       })
     });
-    setFeedback(inviteFeedback, `${payload.email}에게 초대를 보냈습니다.`, "success");
+    setFeedback(inviteFeedback, `${payload.email} 주소로 초대 링크를 만들었습니다.`, "success");
     if (payload.debugInvitationLink) {
       inviteDebugLink.classList.remove("hidden");
-      inviteDebugLink.innerHTML = `<strong>개발용 invite link</strong><a href="${payload.debugInvitationLink}">${payload.debugInvitationLink}</a>`;
+      inviteDebugLink.innerHTML = `<strong>디버그 초대 링크</strong><a href="${payload.debugInvitationLink}">${payload.debugInvitationLink}</a>`;
     }
     inviteForm.reset();
     await loadMembersAndInvites();
@@ -183,21 +200,9 @@ async function bootstrap() {
     await loadMe();
     await loadMembersAndInvites();
   } catch (error) {
-    if (error.code === "AUTH_SESSION_INVALID" || error.code === "UNAUTHORIZED") {
-      try {
-        await request("/api/v1/auth/refresh", { method: "POST" });
-        await loadMe();
-        await loadMembersAndInvites();
-        setFeedback(feedback, "세션을 새로고침했습니다.", "success");
-        return;
-      } catch {
-        // fall through
-      }
-    }
     setFeedback(feedback, error.message, "error");
-    setCard("세션이 없습니다", "다시 로그인해 주세요.");
+    setCard("운영 홈을 불러오지 못했습니다", "로그인 상태와 서버 연결을 다시 확인해 주세요.");
   }
 }
 
 bootstrap().catch(() => undefined);
-

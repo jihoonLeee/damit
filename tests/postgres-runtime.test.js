@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { buildPostgresConnectionOptions, redactDatabaseUrl } from "../src/db/postgres-connection.js";
+import { createOwnerSession } from "./helpers/session-auth.js";
 
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "field-agreement-pg-runtime-"));
 process.chdir(tempRoot);
@@ -29,7 +30,9 @@ config.postgresApplicationName = "field-agreement-assistant-test";
 config.postgresPoolMax = "5";
 
 await fs.mkdir(config.publicDir, { recursive: true });
-await fs.writeFile(path.join(config.publicDir, "index.html"), "<html></html>", "utf8");
+for (const fileName of ["landing.html", "login.html", "home.html", "ops.html", "index.html", "confirm.html"]) {
+  await fs.writeFile(path.join(config.publicDir, fileName), "<html></html>", "utf8");
+}
 
 const app = createApp();
 const server = createServer((req, res) => app.handle(req, res));
@@ -75,9 +78,15 @@ test("postgres connection helper loads a custom CA when provided", async () => {
 });
 
 test("admin postgres preflight returns a clear guard error when database url is missing", async () => {
+  const ownerSession = await createOwnerSession(baseUrl, config, {
+    email: "postgres@example.com",
+    displayName: "포스트그레스운영자",
+    companyName: "다밋 PG"
+  });
+
   const response = await fetch(`${baseUrl}/api/v1/admin/postgres-preflight`, {
     headers: {
-      Authorization: "Bearer dev-owner-token"
+      Cookie: ownerSession.cookieHeader
     }
   });
 

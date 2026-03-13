@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>다밋 홈</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="auth-body home-body">
+  <div class="auth-shell home-shell">
+    <section class="auth-panel success-panel home-panel">
+      <div class="brand-lockup compact">
+        <img class="brand-mark small" src="/damit-mark.svg" alt="다밋 로고" />
+        <div>
+          <p class="eyebrow brand-eyebrow">DAMIT</p>
+          <strong class="brand-name small">다밋</strong>
+        </div>
+      </div>
+      <h1>운영 홈에 로그인되었습니다</h1>
+      <p class="auth-copy">현재 회사, 멤버, 초대 상태를 확인하고 작업 워크스페이스로 이동할 수 있습니다. 권한이 있다면 팀 초대도 여기서 처리합니다.</p>
+
+      <div id="home-summary-card" class="landing-card large">
+        <strong>운영 상태를 불러오는 중입니다.</strong>
+        <p>회사 컨텍스트와 권한 정보를 확인하고 있습니다.</p>
+      </div>
+
+      <section class="home-section stack">
+        <div class="home-section-header">
+          <div>
+            <p class="panel-kicker">Company Context</p>
+            <h2>현재 회사 컨텍스트</h2>
+          </div>
+          <span id="active-company-chip" class="status-badge neutral">불러오는 중</span>
+        </div>
+        <label class="field">
+          <span>회사 전환</span>
+          <select id="company-switcher"></select>
+        </label>
+        <button id="switch-company-button" class="secondary-button" type="button">활성 회사 바꾸기</button>
+      </section>
+
+      <section class="home-section stack">
+        <div class="home-section-header">
+          <div>
+            <p class="panel-kicker">Memberships</p>
+            <h2>회사와 멤버 구성</h2>
+          </div>
+        </div>
+        <div id="membership-list" class="home-list empty-state">멤버 정보를 불러오는 중입니다.</div>
+      </section>
+
+      <section id="invitation-section" class="home-section stack hidden">
+        <div class="home-section-header">
+          <div>
+            <p class="panel-kicker">Owner Only</p>
+            <h2>팀 초대 관리</h2>
+          </div>
+        </div>
+        <form id="invite-form" class="stack auth-form">
+          <label class="field">
+            <span>초대 이메일</span>
+            <input type="email" id="invite-email" placeholder="team@company.com" required />
+          </label>
+          <label class="field">
+            <span>역할</span>
+            <select id="invite-role">
+              <option value="MANAGER">MANAGER</option>
+              <option value="STAFF">STAFF</option>
+            </select>
+          </label>
+          <button type="submit" class="primary-button action-emphasis">초대 링크 만들기</button>
+        </form>
+        <div id="invite-feedback" class="feedback" aria-live="polite"></div>
+        <div id="invite-debug-link" class="auth-debug hidden"></div>
+        <div id="invitation-list" class="home-list empty-state">보낸 초대가 아직 없습니다.</div>
+      </section>
+
+      <div class="landing-actions">
+        <a class="primary-button landing-action action-emphasis" href="/app">작업 워크스페이스</a>
+        <a class="ghost-button landing-action" href="/ops" id="ops-link">운영 콘솔</a>
+      </div>
+      <button id="logout-button" class="ghost-button landing-action" type="button">로그아웃</button>
+      <div id="home-feedback" class="feedback" aria-live="polite"></div>
+    </section>
+  </div>
+  <script type="module" src="/home.js"></script>
+</body>
+</html>

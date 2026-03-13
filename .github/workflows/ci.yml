@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,8 +30,8 @@ jobs:
       - name: Auth regression
         run: node tests/auth-foundation.test.js
 
-      - name: Beta workspace regression
-        run: node tests/beta-workspace.test.js
+      - name: Workspace session regression
+        run: node tests/workspace-session.test.js
 
       - name: Customer confirmation regression
         run: node tests/customer-confirmation.test.js

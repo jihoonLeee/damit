@@ -4,7 +4,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { runPostgresPreflight } from "../db/postgres-preflight.js";
 import { HttpError, json, readJsonBody } from "../http.js";
-import { assertAuthenticated } from "../contexts/field-agreement/application/field-agreement.validation.js";
+import { assertCsrf, getAuthContext } from "../contexts/auth/application/auth-runtime.js";
 import { nowIso } from "../store.js";
 
 export async function handleSystemApiRequest(request, response, pathname, repositories) {
@@ -12,8 +12,8 @@ export async function handleSystemApiRequest(request, response, pathname, reposi
     const storage = await repositories.systemRepository.getStorageSummary();
     json(response, 200, {
       status: "ok",
-      service: "field-agreement-assistant",
-      ownerMode: "OWNER_ONLY",
+      service: "damit",
+      authMode: "SESSION_ONLY",
       storageEngine: storage.storageEngine,
       timestamp: nowIso(),
       counts: storage.counts
@@ -22,14 +22,14 @@ export async function handleSystemApiRequest(request, response, pathname, reposi
   }
 
   if (request.method === "GET" && pathname === "/api/v1/admin/storage-status") {
-    assertAuthenticated(request);
+    await requireOwnerOpsContext(request, repositories);
     const storage = await repositories.systemRepository.getStorageSummary();
     json(response, 200, storage);
     return true;
   }
 
   if (request.method === "GET" && pathname === "/api/v1/admin/ops-snapshot") {
-    assertAuthenticated(request);
+    await requireOwnerOpsContext(request, repositories);
     const snapshot = await repositories.systemRepository.getOpsSnapshot(5);
     json(response, 200, {
       ...snapshot,
@@ -39,9 +39,9 @@ export async function handleSystemApiRequest(request, response, pathname, reposi
   }
 
   if (request.method === "GET" && pathname === "/api/v1/admin/postgres-preflight") {
-    assertAuthenticated(request);
+    await requireOwnerOpsContext(request, repositories);
     if (!config.databaseUrl) {
-      throw new HttpError(409, "POSTGRES_NOT_CONFIGURED", "Managed Postgres 연결 정보가 아직 설정되지 않았어요");
+      throw new HttpError(409, "POSTGRES_NOT_CONFIGURED", "Postgres 연결 문자열이 아직 설정되지 않았습니다.");
     }
     const report = await runPostgresPreflight({
       databaseUrl: config.databaseUrl,
@@ -56,18 +56,18 @@ export async function handleSystemApiRequest(request, response, pathname, reposi
   }
 
   if (request.method === "POST" && pathname === "/api/v1/admin/backup") {
-    assertAuthenticated(request);
+    await requireOwnerOpsContext(request, repositories, { write: true });
     const payload = await readJsonBody(request);
-    const backup = await repositories.systemRepository.createBackup(payload.label || "pilot");
+    const backup = await repositories.systemRepository.createBackup(payload.label || "ops-manual");
     json(response, 201, backup);
     return true;
   }
 
   if (request.method === "POST" && pathname === "/api/v1/admin/reset-data") {
-    assertAuthenticated(request);
+    await requireOwnerOpsContext(request, repositories, { write: true });
     const payload = await readJsonBody(request);
-    if (payload.confirm !== "RESET_PILOT_DATA") {
-      throw new HttpError(400, "RESET_CONFIRMATION_REQUIRED", "리셋 확인 문구를 정확히 입력해주세요");
+    if (payload.confirm !== "RESET_ALL_OPERATIONAL_DATA") {
+      throw new HttpError(400, "RESET_CONFIRMATION_REQUIRED", "초기화 확인 문구가 올바르지 않습니다.");
     }
     await repositories.systemRepository.createBackup("before-reset");
     const storage = await repositories.systemRepository.resetAllData();
@@ -80,6 +80,20 @@ export async function handleSystemApiRequest(request, response, pathname, reposi
   }
 
   return false;
+}
+
+async function requireOwnerOpsContext(request, repositories, options = {}) {
+  const authContext = await getAuthContext(request, repositories);
+  if (authContext.mode !== "SESSION") {
+    throw new HttpError(403, "SESSION_AUTH_REQUIRED", "운영 API는 세션 로그인 후에만 사용할 수 있습니다.");
+  }
+  if (authContext.role !== "OWNER") {
+    throw new HttpError(403, "OPS_OWNER_REQUIRED", "운영 콘솔은 OWNER 권한에서만 사용할 수 있습니다.");
+  }
+  if (options.write) {
+    assertCsrf(request);
+  }
+  return authContext;
 }
 
 async function readReleaseVersionSummary() {

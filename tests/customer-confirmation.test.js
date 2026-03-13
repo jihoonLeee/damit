@@ -6,6 +6,8 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
+import { createOwnerSession } from "./helpers/session-auth.js";
+
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "field-agreement-confirm-"));
 process.chdir(tempRoot);
 
@@ -22,7 +24,7 @@ config.storageEngine = "SQLITE";
 config.appBaseUrl = "";
 
 await fs.mkdir(config.publicDir, { recursive: true });
-for (const fileName of ["landing.html", "login.html", "beta-home.html", "beta-app.html", "index.html", "confirm.html"]) {
+for (const fileName of ["landing.html", "login.html", "home.html", "ops.html", "index.html", "confirm.html"]) {
   await fs.writeFile(path.join(config.publicDir, fileName), "<html></html>", "utf8");
 }
 
@@ -32,9 +34,23 @@ await new Promise((resolve) => server.listen(0, resolve));
 const port = server.address().port;
 const baseUrl = `http://127.0.0.1:${port}`;
 
-function authHeaders(extra = {}) {
+const ownerSession = await createOwnerSession(baseUrl, config, {
+  email: "confirm@example.com",
+  displayName: "담당자",
+  companyName: "다밋 클린"
+});
+
+function sessionHeaders(extra = {}) {
   return {
-    Authorization: "Bearer dev-owner-token",
+    Cookie: ownerSession.cookieHeader,
+    ...extra
+  };
+}
+
+function writeSessionHeaders(extra = {}) {
+  return {
+    Cookie: ownerSession.cookieHeader,
+    "x-csrf-token": ownerSession.csrfToken,
     ...extra
   };
 }
@@ -52,7 +68,7 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
 
   const fieldRecordResponse = await fetch(`${baseUrl}/api/v1/field-records`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: writeSessionHeaders(),
     body: formData
   });
   assert.equal(fieldRecordResponse.status, 201);
@@ -60,7 +76,7 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
 
   const jobCaseResponse = await fetch(`${baseUrl}/api/v1/job-cases`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       customerLabel: "송파 힐스테이트 1203호",
       contactMemo: "당근 문의 고객",
@@ -73,28 +89,28 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
 
   const linkJobCaseResponse = await fetch(`${baseUrl}/api/v1/field-records/${fieldRecord.id}/link-job-case`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ jobCaseId: jobCase.id })
   });
   assert.equal(linkJobCaseResponse.status, 200);
 
   const quoteResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/quote`, {
     method: "PATCH",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ revisedQuoteAmount: 320000 })
   });
   assert.equal(quoteResponse.status, 200);
 
   const draftResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/draft-message`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ tone: "CUSTOMER_MESSAGE" })
   });
   assert.equal(draftResponse.status, 200);
 
   const createLinkResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/customer-confirmation-links`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ expiresInHours: 72 })
   });
   assert.equal(createLinkResponse.status, 201);
@@ -120,7 +136,7 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
   assert.equal(publicAck.status, "CONFIRMED");
 
   const detailResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(detailResponse.status, 200);
   const detail = await detailResponse.json();
@@ -131,7 +147,7 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
   assert.equal(confirmPageResponse.status, 200);
 
   const timelineResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/timeline`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(timelineResponse.status, 200);
   const timeline = await timelineResponse.json();

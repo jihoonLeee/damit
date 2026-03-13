@@ -1,6 +1,4 @@
-const ACCESS_TOKEN_KEY = "fieldAgreementOwnerToken";
-const authMode = document.body.dataset.authMode || "owner-token";
-const CSRF_COOKIE_NAME = "faa_csrf";
+﻿const CSRF_COOKIE_NAME = "faa_csrf";
 const reviewMode = new URLSearchParams(window.location.search).get("review");
 
 if (reviewMode) {
@@ -8,137 +6,108 @@ if (reviewMode) {
 }
 
 const statusLabels = {
+  ALL: "전체",
   UNEXPLAINED: "미설명",
-  EXPLAINED: "설명완료",
-  AGREED: "합의완료",
+  EXPLAINED: "설명 완료",
+  AGREED: "합의 완료",
   ON_HOLD: "보류",
   EXCLUDED: "작업 제외"
 };
 
 const reasonLabels = {
-  CONTAMINATION: "오염도 문제",
-  REMOVAL_TASK: "제거 작업 추가",
-  SPACE_ADDED: "공간 범위 추가",
-  LAYOUT_DIFFERENCE: "구조/평수 차이",
-  WASTE_OR_BELONGINGS: "폐기물/짐 문제",
+  CONTAMINATION: "오염 심화",
+  REMOVAL_TASK: "철거 또는 제거 작업",
+  SPACE_ADDED: "추가 공간 포함",
+  LAYOUT_DIFFERENCE: "구조 또는 범위 차이",
+  WASTE_OR_BELONGINGS: "폐기물 또는 짐 정리",
   NICOTINE: "니코틴 오염",
-  MOLD: "곰팡이 제거",
-  STICKER_REMOVAL: "스티커/보양지 제거",
-  WASTE_DISPOSAL: "폐기물 정리",
+  MOLD: "곰팡이 오염",
+  STICKER_REMOVAL: "스티커/시트지 제거",
+  WASTE_DISPOSAL: "폐기물 처리",
   VERANDA_ADDED: "베란다 추가",
   UTILITY_ROOM_ADDED: "다용도실 추가",
   STORAGE_ADDED: "창고 추가",
-  LAYOUT_MISMATCH: "구조 차이",
+  LAYOUT_MISMATCH: "구조 불일치",
   OTHER: "기타"
 };
 
-const timelineTypeLabels = {
-  FIELD_RECORD_LINKED: "현장 기록 연결",
-  QUOTE_UPDATED: "변경 견적 저장",
-  DRAFT_CREATED: "설명 초안 생성",
-  CUSTOMER_CONFIRMATION_LINK_CREATED: "고객 확인 링크 발급",
-  CUSTOMER_CONFIRMATION_ACKNOWLEDGED: "고객 확인 완료",
-  AGREEMENT_RECORDED: "합의 기록 저장"
-};
-
-function describeReason(item) {
-  return reasonLabels[item.secondaryReason] || reasonLabels[item.primaryReason] || "사유 확인 필요";
-}
-
-function describeTimelineTitle(item) {
-  return timelineTypeLabels[item.type] || "작업 이력";
-}
-
-const state = {
-  filterStatus: "ALL",
-  query: "",
-  selectedJobCaseId: null,
-  currentFieldRecordId: null,
-  jobCases: [],
-  selectedJobCaseDetail: null,
-  latestConfirmationUrl: ""
+const timelineLabels = {
+  FIELD_RECORD_CREATED: "현장 기록이 저장되었습니다",
+  FIELD_RECORD_LINKED: "현장 기록이 작업 건에 연결되었습니다",
+  JOB_CASE_CREATED: "작업 건이 생성되었습니다",
+  QUOTE_UPDATED: "변경 견적이 저장되었습니다",
+  DRAFT_MESSAGE_CREATED: "설명 초안이 생성되었습니다",
+  AGREEMENT_RECORDED: "합의 기록이 저장되었습니다",
+  CUSTOMER_CONFIRMATION_ISSUED: "고객 확인 링크가 발급되었습니다",
+  CUSTOMER_CONFIRMATION_VIEWED: "고객이 확인 링크를 열었습니다",
+  CUSTOMER_CONFIRMATION_CONFIRMED: "고객 확인이 완료되었습니다"
 };
 
 const elements = {
+  runtimeBadge: document.querySelector("#runtime-badge"),
+  authBadge: document.querySelector("#auth-badge"),
+  countsBadge: document.querySelector("#counts-badge"),
+  workspaceTip: document.querySelector("#workspace-tip"),
   fieldRecordForm: document.querySelector("#field-record-form"),
-  jobCaseForm: document.querySelector("#job-case-form"),
+  saveFieldRecord: document.querySelector("#save-field-record"),
   fieldRecordFeedback: document.querySelector("#field-record-feedback"),
-  detailFeedback: document.querySelector("#detail-feedback"),
+  resetFieldRecord: document.querySelector("#reset-field-record"),
   currentFieldRecordLabel: document.querySelector("#current-field-record-label"),
   nextActionHint: document.querySelector("#next-action-hint"),
   progressTitle: document.querySelector("#progress-title"),
   progressCopy: document.querySelector("#progress-copy"),
+  jobCaseForm: document.querySelector("#job-case-form"),
+  createJobCase: document.querySelector("#create-job-case"),
   linkJobCases: document.querySelector("#link-job-cases"),
-  jobCases: document.querySelector("#job-cases"),
+  jobCaseSearch: document.querySelector("#job-case-search"),
   listQuery: document.querySelector("#list-query"),
+  jobCases: document.querySelector("#job-cases"),
+  detailPanel: document.querySelector("#detail-panel"),
   detailTitle: document.querySelector("#detail-title"),
   detailStatus: document.querySelector("#detail-status"),
   detailEmpty: document.querySelector("#detail-empty"),
   detailContent: document.querySelector("#detail-content"),
-  detailPanel: document.querySelector("#detail-panel"),
+  detailFeedback: document.querySelector("#detail-feedback"),
   detailJump: document.querySelector("#detail-jump"),
   metricOriginal: document.querySelector("#metric-original"),
   metricRevised: document.querySelector("#metric-revised"),
   metricDelta: document.querySelector("#metric-delta"),
   quoteForm: document.querySelector("#quote-form"),
   revisedQuoteAmount: document.querySelector("#revisedQuoteAmount"),
+  saveQuote: document.querySelector("#save-quote"),
   scopeBase: document.querySelector("#scope-base"),
   scopeExtra: document.querySelector("#scope-extra"),
   scopeReason: document.querySelector("#scope-reason"),
-  generateDraft: document.querySelector("#generate-draft"),
-  copyDraft: document.querySelector("#copy-draft"),
   draftBody: document.querySelector("#draft-body"),
   copyHint: document.querySelector("#copy-hint"),
-  generateConfirmLink: document.querySelector("#generate-confirm-link"),
-  copyConfirmLink: document.querySelector("#copy-confirm-link"),
+  copyDraft: document.querySelector("#copy-draft"),
+  generateDraft: document.querySelector("#generate-draft"),
   customerConfirmSummary: document.querySelector("#customer-confirm-summary"),
-  customerConfirmUrl: document.querySelector("#customer-confirm-url"),
   customerConfirmMeta: document.querySelector("#customer-confirm-meta"),
+  customerConfirmUrl: document.querySelector("#customer-confirm-url"),
   openConfirmLink: document.querySelector("#open-confirm-link"),
+  copyConfirmLink: document.querySelector("#copy-confirm-link"),
+  generateConfirmLink: document.querySelector("#generate-confirm-link"),
   agreementForm: document.querySelector("#agreement-form"),
-  fieldRecordsDetail: document.querySelector("#field-records-detail"),
-  timeline: document.querySelector("#timeline"),
-  resetFieldRecord: document.querySelector("#reset-field-record"),
-  jobCaseSearch: document.querySelector("#job-case-search"),
-  saveFieldRecord: document.querySelector("#save-field-record"),
-  createJobCase: document.querySelector("#create-job-case"),
-  saveQuote: document.querySelector("#save-quote"),
+  agreementStatus: document.querySelector("#agreementStatus"),
+  confirmationChannel: document.querySelector("#confirmationChannel"),
+  confirmedAt: document.querySelector("#confirmedAt"),
+  confirmedAmount: document.querySelector("#confirmedAmount"),
+  customerResponseNote: document.querySelector("#customerResponseNote"),
   saveAgreement: document.querySelector("#save-agreement"),
-  runtimeBadge: document.querySelector("#runtime-badge"),
-  authBadge: document.querySelector("#auth-badge"),
-  countsBadge: document.querySelector("#counts-badge"),
-  workspaceTip: document.querySelector("#workspace-tip")
+  fieldRecordsDetail: document.querySelector("#field-records-detail"),
+  timeline: document.querySelector("#timeline")
 };
 
-function getDefaultAccessToken() {
-  return window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
-    ? "dev-owner-token"
-    : "";
-}
-
-function readAccessToken() {
-  return window.localStorage.getItem(ACCESS_TOKEN_KEY) || getDefaultAccessToken();
-}
-
-function requestAccessToken(force = false) {
-  if (authMode === "session") {
-    return "";
-  }
-
-  if (!force) {
-    const existing = readAccessToken();
-    if (existing) {
-      return existing;
-    }
-  }
-
-  const nextToken = window.prompt("파일럿 접근 코드를 입력해주세요.")?.trim() || "";
-  if (!nextToken) {
-    throw new Error("파일럿 접근 코드가 필요합니다.");
-  }
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, nextToken);
-  return nextToken;
-}
+const state = {
+  filterStatus: "ALL",
+  query: "",
+  jobCases: [],
+  currentFieldRecordId: null,
+  selectedJobCaseId: null,
+  selectedJobCaseDetail: null,
+  latestConfirmationUrl: ""
+};
 
 function readCookie(name) {
   const prefix = `${name}=`;
@@ -150,21 +119,14 @@ function readCookie(name) {
 }
 
 function buildAuthHeaders(extra = {}, method = "GET") {
-  if (authMode === "session") {
-    const headers = { ...extra };
-    if (method !== "GET") {
-      const csrfToken = readCookie(CSRF_COOKIE_NAME);
-      if (csrfToken) {
-        headers["x-csrf-token"] = csrfToken;
-      }
+  const headers = { ...extra };
+  if (method !== "GET") {
+    const csrfToken = readCookie(CSRF_COOKIE_NAME);
+    if (csrfToken) {
+      headers["x-csrf-token"] = csrfToken;
     }
-    return headers;
   }
-
-  return {
-    Authorization: `Bearer ${requestAccessToken()}`,
-    ...extra
-  };
+  return headers;
 }
 
 function formatMoney(value) {
@@ -193,14 +155,6 @@ function setBusy(button, busy, busyLabel) {
   button.textContent = busy ? busyLabel : button.dataset.defaultLabel;
 }
 
-function setCopyHint(message, emphasized = false) {
-  if (!elements.copyHint) {
-    return;
-  }
-  elements.copyHint.textContent = message;
-  elements.copyHint.className = emphasized ? "helper-text copy-hint-strong" : "helper-text";
-}
-
 function setMetaPill(element, text, tone = "") {
   if (!element) {
     return;
@@ -209,61 +163,79 @@ function setMetaPill(element, text, tone = "") {
   element.className = `meta-pill ${tone}`.trim();
 }
 
-function updateWorkspaceMeta(payload = null) {
-  setMetaPill(elements.authBadge, `접근 방식: ${authMode === "session" ? "세션 로그인" : "운영 토큰"}`, authMode === "session" ? "success" : "warning");
-
-  if (!payload) {
-    setMetaPill(elements.runtimeBadge, "저장소: 확인 실패", "warning");
-    setMetaPill(elements.countsBadge, "작업 수: 확인 실패", "warning");
-    if (elements.workspaceTip) {
-      elements.workspaceTip.textContent = "운영 메타 정보를 가져오지 못했습니다. 서버 상태와 로그인 상태를 먼저 확인해주세요.";
-    }
+function setCopyHint(message, emphasized = false) {
+  if (!elements.copyHint) {
     return;
   }
+  elements.copyHint.textContent = message;
+  elements.copyHint.className = emphasized ? "helper-text copy-hint-strong" : "helper-text";
+}
 
-  const countText = `작업 ${payload.counts?.jobCases ?? 0}건 · 현장 기록 ${payload.counts?.fieldRecords ?? 0}건`;
-  setMetaPill(elements.runtimeBadge, `저장소: ${payload.storageEngine || "알 수 없음"}`, payload.storageEngine === "POSTGRES" ? "success" : "warning");
-  setMetaPill(elements.countsBadge, countText, payload.counts?.jobCases ? "success" : "");
+function describeReason(item) {
+  return reasonLabels[item.secondaryReason] || reasonLabels[item.primaryReason] || item.reasonSummary || "현장 기록을 확인해 주세요.";
+}
 
-  if (elements.workspaceTip) {
-    elements.workspaceTip.textContent = payload.counts?.jobCases
-      ? "현재 운영 데이터가 있습니다. 기존 작업을 이어서 처리하거나 초기화 후 새 점검을 시작하세요."
-      : "현재 작업이 없습니다. 왼쪽에서 현장 기록부터 새로 시작할 수 있습니다.";
-  }
+function describeTimelineTitle(item) {
+  return timelineLabels[item.eventType] || item.eventType || "작업 이력";
 }
 
 function setDefaultConfirmedAt() {
-  const input = document.querySelector("#confirmedAt");
-  if (!input || input.value) {
+  if (!elements.confirmedAt || elements.confirmedAt.value) {
     return;
   }
   const next = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  input.value = next;
+  elements.confirmedAt.value = next;
+}
+
+function renderReviewState() {
+  if (!reviewMode) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    if (reviewMode === "agreement") {
+      scrollToSection("agreement-card", false);
+    }
+    if (reviewMode === "copy") {
+      scrollToSection("draft-card", false);
+      setCopyHint("복사 버튼과 안내 문구를 실제 사용 기준으로 점검하는 화면입니다.", true);
+    }
+  });
 }
 
 function renderCustomerConfirmationState(detail) {
-  if (!elements.customerConfirmSummary || !elements.customerConfirmMeta || !elements.customerConfirmUrl) {
-    return;
-  }
-
   const latest = detail?.latestCustomerConfirmationLink || null;
   elements.customerConfirmSummary.textContent = latest
     ? `최근 링크 상태: ${latest.status} · 만료 ${new Date(latest.expiresAt).toLocaleString("ko-KR")}`
-    : "설명 초안과 변경 금액이 준비되면 고객 확인 링크를 발급할 수 있습니다.";
+    : "설명 초안과 금액이 준비되면 고객 확인 링크를 발급할 수 있습니다.";
 
   elements.customerConfirmMeta.textContent = latest
     ? [
         latest.viewedAt ? `열람 ${new Date(latest.viewedAt).toLocaleString("ko-KR")}` : "아직 고객이 링크를 열지 않았습니다.",
-        latest.confirmedAt ? `확인 완료 ${new Date(latest.confirmedAt).toLocaleString("ko-KR")}` : "확인 완료 전"
+        latest.confirmedAt ? `확인 완료 ${new Date(latest.confirmedAt).toLocaleString("ko-KR")}` : "아직 확인 완료 기록이 없습니다."
       ].join(" · ")
-    : "고객이 링크를 열거나 확인하면 여기 상태가 쌓입니다.";
+    : "고객이 링크를 열거나 확인을 남기면 여기와 타임라인에 상태가 반영됩니다.";
 
   elements.customerConfirmUrl.value = state.latestConfirmationUrl || "";
-  if (elements.openConfirmLink) {
-    const hasUrl = Boolean(state.latestConfirmationUrl);
-    elements.openConfirmLink.classList.toggle("hidden", !hasUrl);
-    elements.openConfirmLink.href = hasUrl ? state.latestConfirmationUrl : "#";
+  const hasUrl = Boolean(state.latestConfirmationUrl);
+  elements.openConfirmLink.classList.toggle("hidden", !hasUrl);
+  elements.openConfirmLink.href = hasUrl ? state.latestConfirmationUrl : "#";
+}
+
+function updateWorkspaceMeta(payload = null) {
+  setMetaPill(elements.authBadge, "인증: 세션 로그인", "success");
+
+  if (!payload) {
+    setMetaPill(elements.runtimeBadge, "런타임: 확인 실패", "warning");
+    setMetaPill(elements.countsBadge, "건수 정보: 확인 실패", "warning");
+    elements.workspaceTip.textContent = "운영 상태를 다시 불러오지 못했습니다. 서버 연결 상태를 확인해 주세요.";
+    return;
   }
+
+  setMetaPill(elements.runtimeBadge, `런타임: ${payload.storageEngine || "unknown"}`, payload.storageEngine === "POSTGRES" ? "success" : "warning");
+  setMetaPill(elements.countsBadge, `작업 ${payload.counts?.jobCases ?? 0}건 · 현장 기록 ${payload.counts?.fieldRecords ?? 0}건`, payload.counts?.jobCases ? "success" : "");
+  elements.workspaceTip.textContent = payload.counts?.jobCases
+    ? "현재 저장된 작업 건이 있습니다. 목록에서 바로 이어서 처리할 수 있습니다."
+    : "아직 저장된 작업 건이 없습니다. 왼쪽의 현장 기록 입력부터 시작해 주세요.";
 }
 
 function syncActionState() {
@@ -272,54 +244,50 @@ function syncActionState() {
   const detail = state.selectedJobCaseDetail;
   const hasQuote = Boolean(detail && Number.isInteger(detail.revisedQuoteAmount));
   const hasDraft = Boolean(detail?.latestDraftMessage?.body);
-  const canIssueConfirmation = Boolean(hasSelectedJobCase && hasQuote && hasDraft);
+  const hasConfirmationLink = Boolean(state.latestConfirmationUrl);
 
   elements.createJobCase.disabled = !hasFieldRecord;
+  elements.saveQuote.disabled = !hasSelectedJobCase;
   elements.generateDraft.disabled = !hasSelectedJobCase || !hasQuote;
   elements.copyDraft.disabled = !hasDraft;
-  if (elements.generateConfirmLink) {
-    elements.generateConfirmLink.disabled = !canIssueConfirmation;
-  }
-  if (elements.copyConfirmLink) {
-    elements.copyConfirmLink.disabled = !state.latestConfirmationUrl;
-  }
-  elements.saveQuote.disabled = !hasSelectedJobCase;
+  elements.generateConfirmLink.disabled = !(hasSelectedJobCase && hasQuote && hasDraft);
+  elements.copyConfirmLink.disabled = !hasConfirmationLink;
   elements.saveAgreement.disabled = !hasSelectedJobCase;
-  if (elements.detailJump) {
-    elements.detailJump.classList.toggle("hidden", !hasSelectedJobCase);
-  }
+  elements.detailJump.classList.toggle("hidden", !hasSelectedJobCase);
 
   if (!hasFieldRecord) {
-    elements.progressTitle.textContent = "1. 현장 문제를 먼저 기록하세요";
-    elements.progressCopy.textContent = "사진 1장 이상과 사유를 저장하면 다음 단계로 넘어갈 수 있습니다.";
-    elements.nextActionHint.textContent = "현장 기록 저장 후 새 작업 건을 만들거나 기존 작업 건에 연결할 수 있습니다.";
+    elements.progressTitle.textContent = "1. 현장 사진과 사유를 먼저 기록하세요";
+    elements.progressCopy.textContent = "사진 1장 이상과 사유를 남기면 다음 단계로 자연스럽게 이어집니다.";
+    elements.nextActionHint.textContent = "현장 기록을 저장하면 새 작업 건을 만들거나 기존 작업 건에 연결할 수 있습니다.";
     return;
   }
 
   if (!hasSelectedJobCase) {
     elements.progressTitle.textContent = "2. 작업 건에 연결하세요";
-    elements.progressCopy.textContent = "방금 저장한 기록을 새 작업 건에 붙이거나 기존 건에 연결하면 상세 화면으로 이어집니다.";
-    elements.nextActionHint.textContent = "새 작업 건 생성 또는 기존 작업 건 연결 중 하나를 완료해주세요.";
+    elements.progressCopy.textContent = "방금 저장한 기록을 새 작업 건에 붙이거나 기존 작업 건에 연결하면 상세 화면으로 이어집니다.";
+    elements.nextActionHint.textContent = "새 작업 건 생성 또는 기존 작업 건 연결 중 하나를 완료해 주세요.";
     return;
   }
 
   if (!hasQuote) {
-    elements.progressTitle.textContent = "3. 변경 금액을 입력하세요";
+    elements.progressTitle.textContent = "3. 변경 견적을 입력하세요";
     elements.progressCopy.textContent = "기본 범위와 추가 작업을 비교하려면 먼저 변경 금액이 필요합니다.";
-    elements.nextActionHint.textContent = "상세 화면에서 변경 견적을 저장하면 설명 초안을 만들 수 있습니다.";
+    elements.nextActionHint.textContent = "상세 화면에서 변경 견적을 저장하면 설명 초안 생성으로 이어집니다.";
     return;
   }
 
   if (!hasDraft) {
-    elements.progressTitle.textContent = "4. 설명 초안을 생성하세요";
-    elements.progressCopy.textContent = "고객이 이해하기 쉬운 순서로 초안을 만든 뒤 복사해 바로 설명할 수 있습니다.";
-    elements.nextActionHint.textContent = "설명 초안 생성 후 고객 확인 링크나 합의 기록으로 이어가세요.";
+    elements.progressTitle.textContent = "4. 고객 설명 초안을 생성하세요";
+    elements.progressCopy.textContent = "설명 문장을 만든 뒤 카카오톡이나 문자로 바로 복사해서 전달할 수 있습니다.";
+    elements.nextActionHint.textContent = "설명 초안을 만든 뒤 고객 확인 링크 또는 합의 기록으로 이어가세요.";
     return;
   }
 
-  elements.progressTitle.textContent = "5. 고객 확인과 합의를 남기세요";
-  elements.progressCopy.textContent = "고객 확인 링크 또는 합의 기록으로 설명 흔적과 분쟁 근거를 함께 남겨두세요.";
-  elements.nextActionHint.textContent = "고객 확인 링크 발급 또는 합의 기록 저장 후 타임라인에서 상태를 확인하세요.";
+  elements.progressTitle.textContent = "5. 고객 확인과 합의를 기록하세요";
+  elements.progressCopy.textContent = "고객 확인 링크 또는 합의 기록으로 설명 근거와 의사결정을 남겨 주세요.";
+  elements.nextActionHint.textContent = hasConfirmationLink
+    ? "고객 확인 링크 상태와 합의 기록을 함께 보면서 타임라인을 정리해 주세요."
+    : "고객 확인 링크를 발급하거나 바로 합의 기록을 남길 수 있습니다.";
 }
 
 function scrollDetailIntoView() {
@@ -345,7 +313,7 @@ function scrollToSection(targetId, smooth = true) {
 async function copyTextToClipboard(text) {
   if (navigator.clipboard?.writeText && window.isSecureContext) {
     await navigator.clipboard.writeText(text);
-    return true;
+    return;
   }
 
   const textarea = document.createElement("textarea");
@@ -366,10 +334,8 @@ async function copyTextToClipboard(text) {
   }
 
   if (!copied) {
-    throw new Error("복사 권한을 확인해주세요.");
+    throw new Error("브라우저 복사 권한을 확인해 주세요.");
   }
-
-  return true;
 }
 
 async function refreshSessionCookie() {
@@ -378,7 +344,7 @@ async function refreshSessionCookie() {
     credentials: "same-origin"
   });
   if (!response.ok) {
-    throw new Error("세션을 다시 시작해주세요.");
+    throw new Error("세션을 다시 시작해 주세요.");
   }
 }
 
@@ -386,7 +352,7 @@ async function request(url, options = {}, allowRetry = true) {
   const method = options.method || "GET";
   const response = await fetch(url, {
     ...options,
-    credentials: authMode === "session" ? "same-origin" : options.credentials,
+    credentials: "same-origin",
     headers: {
       ...buildAuthHeaders(options.headers || {}, method)
     }
@@ -397,21 +363,15 @@ async function request(url, options = {}, allowRetry = true) {
 
   if (!response.ok) {
     if ((response.status === 401 || response.status === 403) && allowRetry) {
-      if (authMode === "session") {
-        try {
-          await refreshSessionCookie();
-          return request(url, options, false);
-        } catch {
-          window.location.href = "/login";
-          throw new Error("다시 로그인해주세요.");
-        }
+      try {
+        await refreshSessionCookie();
+        return request(url, options, false);
+      } catch {
+        window.location.href = "/login";
+        throw new Error("세션이 만료되었습니다.");
       }
-
-      window.localStorage.removeItem(ACCESS_TOKEN_KEY);
-      requestAccessToken(true);
-      return request(url, options, false);
     }
-    throw new Error(payload?.error?.message || "요청에 실패했습니다.");
+    throw new Error(payload?.error?.message || "요청을 처리하지 못했습니다.");
   }
 
   return payload;
@@ -425,12 +385,12 @@ async function loadHealth() {
   try {
     const payload = await request("/api/v1/health");
     if (payload?.status === "ok") {
-      showFeedback(elements.fieldRecordFeedback, `운영 상태를 불러왔습니다. 현재 작업 ${payload.counts.jobCases}건입니다.`, "success");
+      showFeedback(elements.fieldRecordFeedback, `운영 상태를 불러왔습니다. 현재 작업 건 ${payload.counts.jobCases}건입니다.`, "success");
       updateWorkspaceMeta(payload);
     }
   } catch {
     updateWorkspaceMeta(null);
-    showFeedback(elements.fieldRecordFeedback, "운영 상태를 불러오지 못했습니다. 서버 연결을 확인해주세요.", "error");
+    showFeedback(elements.fieldRecordFeedback, "운영 상태를 불러오지 못했습니다. 서버 연결을 확인해 주세요.", "error");
   }
 }
 
@@ -453,7 +413,7 @@ async function loadJobCases() {
 
 function renderJobCases() {
   if (state.jobCases.length === 0) {
-    elements.jobCases.innerHTML = `<div class="empty-state">아직 열린 작업이 없습니다. 왼쪽에서 현장 기록부터 시작하세요.</div>`;
+    elements.jobCases.innerHTML = '<div class="empty-state">아직 열린 작업 건이 없습니다. 왼쪽에서 현장 기록부터 시작해 주세요.</div>';
     return;
   }
 
@@ -467,9 +427,9 @@ function renderJobCases() {
           </div>
           <span class="status-badge ${item.currentStatus}">${statusLabels[item.currentStatus] || item.currentStatus}</span>
         </div>
-        <p>최근 이슈 - ${describeReason(item)}</p>
-        <p>견적 - ?? ${formatMoney(item.originalQuoteAmount)} / ?? ${formatMoney(item.revisedQuoteAmount)}</p>
-        <p>${item.hasAgreementRecord ? "합의 기록이 남아 있습니다" : "아직 합의 기록이 없습니다"} - 마지막 업데이트 ${new Date(item.updatedAt).toLocaleString("ko-KR")}</p>
+        <p>최근 이슈 · ${describeReason(item)}</p>
+        <p>견적 · 원래 ${formatMoney(item.originalQuoteAmount)} / 변경 ${formatMoney(item.revisedQuoteAmount)}</p>
+        <p>${item.hasAgreementRecord ? "합의 기록이 있습니다" : "아직 합의 기록이 없습니다"} · 최근 업데이트 ${new Date(item.updatedAt).toLocaleString("ko-KR")}</p>
       </article>
     `)
     .join("");
@@ -489,12 +449,12 @@ function renderLinkCandidates() {
   const filtered = state.jobCases.filter((item) => !query || item.customerLabel.toLowerCase().includes(query) || item.siteLabel.toLowerCase().includes(query));
 
   if (!state.currentFieldRecordId) {
-    elements.linkJobCases.innerHTML = `<p class="helper-text">현장 기록을 저장하면 연결 가능한 작업 건이 여기에 표시됩니다.</p>`;
+    elements.linkJobCases.innerHTML = '<p class="helper-text">현장 기록을 저장하면 연결 가능한 작업 건이 여기에 표시됩니다.</p>';
     return;
   }
 
   if (filtered.length === 0) {
-    elements.linkJobCases.innerHTML = `<p class="helper-text">검색 조건에 맞는 작업 건이 없습니다.</p>`;
+    elements.linkJobCases.innerHTML = '<p class="helper-text">검색 조건에 맞는 작업 건이 없습니다.</p>';
     return;
   }
 
@@ -508,7 +468,7 @@ function renderLinkCandidates() {
           </div>
           <span class="status-badge ${item.currentStatus}">${statusLabels[item.currentStatus] || item.currentStatus}</span>
         </div>
-        <button class="secondary-button" data-link-job-case-id="${item.id}">이 작업 건에 연결</button>
+        <button class="secondary-button" type="button" data-link-job-case-id="${item.id}">이 작업 건에 연결</button>
       </article>
     `)
     .join("");
@@ -536,30 +496,19 @@ function renderLinkCandidates() {
   });
 }
 
-function renderReviewState() {
-  if (!reviewMode) {
-    return;
-  }
-
-  window.requestAnimationFrame(() => {
-    if (reviewMode === "agreement") {
-      scrollToSection("agreement-card", false);
-    }
-    if (reviewMode === "copy") {
-      scrollToSection("draft-card", false);
-      setCopyHint("브라우저 복사 버튼 검수용 상태입니다. 버튼 대비와 안내 문구를 함께 확인하세요.", true);
-    }
-  });
-}
-
 async function loadJobCaseDetail(jobCaseId) {
-  const [detail, timeline] = await Promise.all([
+  const [detail, timeline, scope] = await Promise.all([
     request(`/api/v1/job-cases/${jobCaseId}`),
-    request(`/api/v1/job-cases/${jobCaseId}/timeline`)
+    request(`/api/v1/job-cases/${jobCaseId}/timeline`),
+    request(`/api/v1/job-cases/${jobCaseId}/scope-comparison`).catch(() => null)
   ]);
 
-  state.selectedJobCaseDetail = detail;
-  state.latestConfirmationUrl = "";
+  state.selectedJobCaseDetail = {
+    ...detail,
+    scopeComparison: scope || detail.scopeComparison || null
+  };
+  state.latestConfirmationUrl = detail.latestCustomerConfirmationLink?.confirmationUrl || state.latestConfirmationUrl || "";
+
   elements.detailEmpty.classList.add("hidden");
   elements.detailContent.classList.remove("hidden");
   elements.detailTitle.textContent = detail.customerLabel;
@@ -570,20 +519,22 @@ async function loadJobCaseDetail(jobCaseId) {
   elements.metricDelta.textContent = detail.quoteDeltaAmount == null ? "-" : `${detail.quoteDeltaAmount >= 0 ? "+" : ""}${formatMoney(detail.quoteDeltaAmount)}`;
   elements.revisedQuoteAmount.value = detail.revisedQuoteAmount ?? "";
 
-  elements.scopeBase.textContent = detail.scopeComparison?.baseScopeSummary || "아직 범위 정보가 없습니다.";
-  elements.scopeExtra.textContent = detail.scopeComparison?.extraWorkSummary || "현장 기록과 금액을 저장하면 정리됩니다.";
-  elements.scopeReason.textContent = detail.scopeComparison?.reasonWhyExtra || "";
-  elements.draftBody.textContent = detail.latestDraftMessage?.body || "현장 기록과 변경 금액을 먼저 준비해주세요.";
-  setCopyHint("현장 통화 전에 복사해 카카오톡/문자에 바로 붙여넣을 수 있습니다.", false);
+  const scopePayload = state.selectedJobCaseDetail.scopeComparison || {};
+  elements.scopeBase.textContent = scopePayload.baseScopeSummary || "기본 포함 범위 요약이 아직 없습니다.";
+  elements.scopeExtra.textContent = scopePayload.extraWorkSummary || "추가 작업 요약이 아직 없습니다.";
+  elements.scopeReason.textContent = scopePayload.reasonWhyExtra || "";
+
+  elements.draftBody.textContent = detail.latestDraftMessage?.body || "설명 초안을 아직 만들지 않았습니다.";
+  setCopyHint("초안을 복사하면 카카오톡이나 문자로 바로 붙여 넣어 설명할 수 있습니다.", false);
   renderCustomerConfirmationState(detail);
 
   elements.fieldRecordsDetail.innerHTML = detail.fieldRecords.length === 0
-    ? `<div class="empty-state">이 작업 건에 연결된 현장 기록이 아직 없습니다.</div>`
+    ? '<div class="empty-state">이 작업 건에 연결된 현장 기록이 아직 없습니다.</div>'
     : detail.fieldRecords.map((record) => `
         <article class="record-card">
-          <strong>확인 사유 - ${reasonLabels[record.secondaryReason] || reasonLabels[record.primaryReason] || "사유 확인 필요"}</strong>
-          <p>${record.note || "메모 없이 저장된 기록입니다."}</p>
-          <p>기록 시각 - ${new Date(record.createdAt).toLocaleString("ko-KR")}</p>
+          <strong>확인 사유 · ${reasonLabels[record.secondaryReason] || reasonLabels[record.primaryReason] || "사유 확인 필요"}</strong>
+          <p>${record.note || "메모 없이 저장된 현장 기록입니다."}</p>
+          <p>기록 시각 · ${new Date(record.createdAt).toLocaleString("ko-KR")}</p>
           <div class="record-photos">
             ${record.photos.map((photo) => `<img src="${photo.url}" alt="현장 기록 사진" />`).join("")}
           </div>
@@ -591,11 +542,11 @@ async function loadJobCaseDetail(jobCaseId) {
       `).join("");
 
   elements.timeline.innerHTML = timeline.items.length === 0
-    ? `<div class="empty-state">아직 남겨진 작업 이력이 없습니다.</div>`
+    ? '<div class="empty-state">아직 남은 타임라인 항목이 없습니다.</div>'
     : timeline.items.map((item) => `
         <article class="timeline-item">
           <strong>${describeTimelineTitle(item)}</strong>
-          <p>${item.summary || "세부 설명이 아직 남겨지지 않았습니다."}</p>
+          <p>${item.summary || "요약 정보가 없습니다."}</p>
           <span>${new Date(item.createdAt).toLocaleString("ko-KR")}</span>
         </article>
       `).join("");
@@ -624,14 +575,14 @@ elements.fieldRecordForm.addEventListener("submit", async (event) => {
   } catch (error) {
     showFeedback(elements.fieldRecordFeedback, error.message, "error");
   } finally {
-    setBusy(elements.saveFieldRecord, false, "저장 중...");
+    setBusy(elements.saveFieldRecord, false, "현장 기록 저장");
   }
 });
 
 elements.jobCaseForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.currentFieldRecordId) {
-    showFeedback(elements.fieldRecordFeedback, "먼저 현장 기록을 저장해주세요.", "error");
+    showFeedback(elements.fieldRecordFeedback, "먼저 현장 기록을 저장해 주세요.", "error");
     return;
   }
 
@@ -655,21 +606,21 @@ elements.jobCaseForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ jobCaseId: jobCase.id })
     });
     state.selectedJobCaseId = jobCase.id;
-    showFeedback(elements.fieldRecordFeedback, "새 작업 건을 만들고 연결했습니다.", "success");
+    showFeedback(elements.fieldRecordFeedback, "새 작업 건을 만들고 현장 기록을 연결했습니다.", "success");
     await loadJobCases();
     await loadJobCaseDetail(jobCase.id);
     scrollDetailIntoView();
   } catch (error) {
     showFeedback(elements.fieldRecordFeedback, error.message, "error");
   } finally {
-    setBusy(elements.createJobCase, false, "생성 중...");
+    setBusy(elements.createJobCase, false, "새 작업 건 만들고 연결");
   }
 });
 
 elements.quoteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.selectedJobCaseId) {
-    showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해주세요.", "error");
+    showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해 주세요.", "error");
     return;
   }
 
@@ -680,20 +631,20 @@ elements.quoteForm.addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ revisedQuoteAmount: Number(elements.revisedQuoteAmount.value) })
     });
-    showFeedback(elements.detailFeedback, "변경 금액과 범위 대비를 저장했습니다.", "success");
+    showFeedback(elements.detailFeedback, "변경 견적을 저장했습니다.", "success");
     await loadJobCases();
     await loadJobCaseDetail(state.selectedJobCaseId);
     scrollToSection("quote-card");
   } catch (error) {
     showFeedback(elements.detailFeedback, error.message, "error");
   } finally {
-    setBusy(elements.saveQuote, false, "저장 중...");
+    setBusy(elements.saveQuote, false, "금액 저장");
   }
 });
 
 elements.generateDraft.addEventListener("click", async () => {
   if (!state.selectedJobCaseId) {
-    showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해주세요.", "error");
+    showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해 주세요.", "error");
     return;
   }
 
@@ -711,84 +662,80 @@ elements.generateDraft.addEventListener("click", async () => {
   } catch (error) {
     showFeedback(elements.detailFeedback, error.message, "error");
   } finally {
-    setBusy(elements.generateDraft, false, "생성 중...");
+    setBusy(elements.generateDraft, false, "설명 초안 생성");
   }
 });
 
 elements.copyDraft.addEventListener("click", async () => {
   const draft = state.selectedJobCaseDetail?.latestDraftMessage?.body;
   if (!draft) {
-    showFeedback(elements.detailFeedback, "복사할 초안이 아직 없습니다.", "error");
+    showFeedback(elements.detailFeedback, "복사할 설명 초안이 아직 없습니다.", "error");
     return;
   }
 
   try {
     await copyTextToClipboard(draft);
-    setCopyHint("복사되었습니다. 카카오톡/문자 입력창에 바로 붙여넣어 설명할 수 있습니다.", true);
+    setCopyHint("설명 초안을 복사했습니다. 카카오톡이나 문자 입력창에 바로 붙여 넣을 수 있습니다.", true);
     elements.copyDraft.textContent = "복사됨";
     window.setTimeout(() => {
-      elements.copyDraft.textContent = elements.copyDraft.dataset.defaultLabel || "복사";
+      elements.copyDraft.textContent = elements.copyDraft.dataset.defaultLabel || "초안 복사";
     }, 1400);
     showFeedback(elements.detailFeedback, "설명 초안을 복사했습니다.", "success");
   } catch {
-    setCopyHint("이 브라우저에서는 자동 복사가 막혀 있을 수 있습니다. 초안을 길게 눌러 직접 복사하세요.", true);
-    showFeedback(elements.detailFeedback, "브라우저에서 복사 권한을 허용해주세요.", "error");
+    setCopyHint("브라우저에서 자동 복사가 막혀 있을 수 있습니다. 초안 본문을 직접 선택해 복사해 주세요.", true);
+    showFeedback(elements.detailFeedback, "브라우저 복사 권한을 허용해 주세요.", "error");
   }
 });
 
-if (elements.generateConfirmLink) {
-  elements.generateConfirmLink.addEventListener("click", async () => {
-    if (!state.selectedJobCaseId) {
-      showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해주세요.", "error");
-      return;
-    }
+elements.generateConfirmLink.addEventListener("click", async () => {
+  if (!state.selectedJobCaseId) {
+    showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해 주세요.", "error");
+    return;
+  }
 
-    setBusy(elements.generateConfirmLink, true, "발급 중...");
-    try {
-      const payload = await request(`/api/v1/job-cases/${state.selectedJobCaseId}/customer-confirmation-links`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expiresInHours: 72 })
-      });
-      state.latestConfirmationUrl = payload.confirmationUrl;
-      await loadJobCaseDetail(state.selectedJobCaseId);
-      state.latestConfirmationUrl = payload.confirmationUrl;
-      renderCustomerConfirmationState(state.selectedJobCaseDetail);
-      showFeedback(elements.detailFeedback, "고객 확인 링크를 발급했습니다.", "success");
-      scrollToSection("customer-confirm-card");
-    } catch (error) {
-      showFeedback(elements.detailFeedback, error.message, "error");
-    } finally {
-      setBusy(elements.generateConfirmLink, false, "발급 중...");
-      syncActionState();
-    }
-  });
-}
+  setBusy(elements.generateConfirmLink, true, "발급 중...");
+  try {
+    const payload = await request(`/api/v1/job-cases/${state.selectedJobCaseId}/customer-confirmation-links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresInHours: 72 })
+    });
+    state.latestConfirmationUrl = payload.confirmationUrl;
+    await loadJobCaseDetail(state.selectedJobCaseId);
+    state.latestConfirmationUrl = payload.confirmationUrl;
+    renderCustomerConfirmationState(state.selectedJobCaseDetail);
+    showFeedback(elements.detailFeedback, "고객 확인 링크를 발급했습니다.", "success");
+    scrollToSection("customer-confirm-card");
+  } catch (error) {
+    showFeedback(elements.detailFeedback, error.message, "error");
+  } finally {
+    setBusy(elements.generateConfirmLink, false, "확인 링크 발급");
+    syncActionState();
+  }
+});
 
-if (elements.copyConfirmLink) {
-  elements.copyConfirmLink.addEventListener("click", async () => {
-    if (!state.latestConfirmationUrl) {
-      showFeedback(elements.detailFeedback, "먼저 확인 링크를 발급해주세요.", "error");
-      return;
-    }
+elements.copyConfirmLink.addEventListener("click", async () => {
+  if (!state.latestConfirmationUrl) {
+    showFeedback(elements.detailFeedback, "먼저 고객 확인 링크를 발급해 주세요.", "error");
+    return;
+  }
 
-    try {
-      await copyTextToClipboard(state.latestConfirmationUrl);
-      elements.copyConfirmLink.textContent = "복사됨";
-      window.setTimeout(() => {
-        elements.copyConfirmLink.textContent = elements.copyConfirmLink.dataset.defaultLabel || "링크 복사";
-      }, 1400);
-      showFeedback(elements.detailFeedback, "고객 확인 링크를 복사했습니다.", "success");
-    } catch {
-      showFeedback(elements.detailFeedback, "브라우저에서 링크 복사 권한을 허용해주세요.", "error");
-    }
-  });
-}
+  try {
+    await copyTextToClipboard(state.latestConfirmationUrl);
+    elements.copyConfirmLink.textContent = "복사됨";
+    window.setTimeout(() => {
+      elements.copyConfirmLink.textContent = elements.copyConfirmLink.dataset.defaultLabel || "링크 복사";
+    }, 1400);
+    showFeedback(elements.detailFeedback, "고객 확인 링크를 복사했습니다.", "success");
+  } catch {
+    showFeedback(elements.detailFeedback, "브라우저에서 링크 복사 권한을 허용해 주세요.", "error");
+  }
+});
 
 elements.agreementForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.selectedJobCaseId) {
-    showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해주세요.", "error");
+    showFeedback(elements.detailFeedback, "먼저 작업 건을 선택해 주세요.", "error");
     return;
   }
 
@@ -798,11 +745,11 @@ elements.agreementForm.addEventListener("submit", async (event) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        status: document.querySelector("#agreementStatus").value,
-        confirmationChannel: document.querySelector("#confirmationChannel").value,
-        confirmedAt: document.querySelector("#confirmedAt").value ? new Date(document.querySelector("#confirmedAt").value).toISOString() : undefined,
-        confirmedAmount: document.querySelector("#confirmedAmount").value,
-        customerResponseNote: document.querySelector("#customerResponseNote").value
+        status: elements.agreementStatus.value,
+        confirmationChannel: elements.confirmationChannel.value,
+        confirmedAt: elements.confirmedAt.value ? new Date(elements.confirmedAt.value).toISOString() : undefined,
+        confirmedAmount: elements.confirmedAmount.value,
+        customerResponseNote: elements.customerResponseNote.value
       })
     });
     showFeedback(elements.detailFeedback, "합의 기록을 저장했습니다.", "success");
@@ -812,7 +759,7 @@ elements.agreementForm.addEventListener("submit", async (event) => {
   } catch (error) {
     showFeedback(elements.detailFeedback, error.message, "error");
   } finally {
-    setBusy(elements.saveAgreement, false, "저장 중...");
+    setBusy(elements.saveAgreement, false, "합의 기록 저장");
   }
 });
 
@@ -841,12 +788,12 @@ elements.resetFieldRecord.addEventListener("click", () => {
   elements.fieldRecordForm.reset();
   elements.jobCaseForm.reset();
   elements.currentFieldRecordLabel.textContent = "아직 저장된 현장 기록이 없습니다.";
-  elements.detailTitle.textContent = "작업 건을 선택해주세요";
+  elements.detailTitle.textContent = "작업 건을 선택해 주세요";
   elements.detailStatus.textContent = "미선택";
   elements.detailStatus.className = "status-badge neutral";
   elements.detailContent.classList.add("hidden");
   elements.detailEmpty.classList.remove("hidden");
-  setCopyHint("현장 통화 전에 복사해 카카오톡/문자에 바로 붙여넣을 수 있습니다.", false);
+  setCopyHint("초안을 복사하면 카카오톡이나 문자로 바로 붙여 넣어 설명할 수 있습니다.", false);
   renderCustomerConfirmationState(null);
   showFeedback(elements.fieldRecordFeedback, "", "");
   showFeedback(elements.detailFeedback, "", "");
@@ -856,21 +803,16 @@ elements.resetFieldRecord.addEventListener("click", () => {
   syncActionState();
 });
 
-if (elements.detailJump) {
-  elements.detailJump.querySelectorAll("[data-target]").forEach((button) => {
-    button.addEventListener("click", () => {
-      scrollToSection(button.dataset.target);
-    });
+elements.detailJump.querySelectorAll("[data-target]").forEach((button) => {
+  button.addEventListener("click", () => {
+    scrollToSection(button.dataset.target);
   });
-}
+});
 
 setDefaultConfirmedAt();
+renderCustomerConfirmationState(null);
+syncActionState();
 loadHealth().catch(() => undefined);
-loadJobCases()
-  .then(() => {
-    renderCustomerConfirmationState(null);
-    syncActionState();
-  })
-  .catch((error) => {
-    showFeedback(elements.fieldRecordFeedback, error.message, "error");
-  });
+loadJobCases().catch((error) => {
+  showFeedback(elements.fieldRecordFeedback, error.message, "error");
+});

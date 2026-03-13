@@ -1,4 +1,4 @@
-const ACCESS_TOKEN_KEY = "fieldAgreementOwnerToken";
+﻿const CSRF_COOKIE_NAME = "faa_csrf";
 
 const elements = {
   healthStatus: document.querySelector("#ops-health-status"),
@@ -16,33 +16,24 @@ const elements = {
   feedback: document.querySelector("#ops-feedback")
 };
 
-function getDefaultAccessToken() {
-  return window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
-    ? "dev-owner-token"
-    : "";
+function readCookie(name) {
+  const prefix = `${name}=`;
+  return document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length) || "";
 }
 
-function requestAccessToken(force = false) {
-  if (!force) {
-    const existing = window.localStorage.getItem(ACCESS_TOKEN_KEY) || getDefaultAccessToken();
-    if (existing) {
-      return existing;
+function buildHeaders(extra = {}, method = "GET") {
+  const headers = { ...extra };
+  if (method !== "GET") {
+    const csrfToken = readCookie(CSRF_COOKIE_NAME);
+    if (csrfToken) {
+      headers["x-csrf-token"] = csrfToken;
     }
   }
-
-  const nextToken = window.prompt("운영 접근 코드를 입력해 주세요.")?.trim() || "";
-  if (!nextToken) {
-    throw new Error("운영 접근 코드가 필요합니다.");
-  }
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, nextToken);
-  return nextToken;
-}
-
-function buildHeaders(extra = {}) {
-  return {
-    Authorization: `Bearer ${requestAccessToken()}`,
-    ...extra
-  };
+  return headers;
 }
 
 function showFeedback(message, tone = "") {
@@ -58,22 +49,42 @@ function setBusy(button, busy, busyLabel) {
   button.textContent = busy ? busyLabel : button.dataset.defaultLabel;
 }
 
+async function refreshSession() {
+  const response = await fetch("/api/v1/auth/refresh", {
+    method: "POST",
+    credentials: "same-origin"
+  });
+  if (!response.ok) {
+    throw new Error("세션이 만료되었습니다.");
+  }
+}
+
 async function request(url, options = {}, allowRetry = true) {
+  const method = options.method || "GET";
   const response = await fetch(url, {
     ...options,
-    headers: buildHeaders(options.headers || {})
+    credentials: "same-origin",
+    headers: buildHeaders(options.headers || {}, method)
   });
 
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json") ? await response.json() : null;
 
   if (!response.ok) {
+    const code = payload?.error?.code;
     if ((response.status === 401 || response.status === 403) && allowRetry) {
-      window.localStorage.removeItem(ACCESS_TOKEN_KEY);
-      requestAccessToken(true);
-      return request(url, options, false);
+      try {
+        await refreshSession();
+        return request(url, options, false);
+      } catch {
+        window.location.href = "/login";
+        throw new Error("세션이 만료되었습니다.");
+      }
     }
-    throw new Error(payload?.error?.message || "요청에 실패했습니다.");
+    if (code === "OPS_OWNER_REQUIRED" || code === "COMPANY_ROLE_FORBIDDEN") {
+      window.location.href = "/home";
+    }
+    throw new Error(payload?.error?.message || "요청을 처리하지 못했습니다.");
   }
 
   return payload;
@@ -106,13 +117,13 @@ function renderSnapshot(health, snapshot) {
     elements.healthMeta.textContent = `service=${health.service} / ${new Date(health.timestamp).toLocaleString("ko-KR")} / release=${snapshot.release.tag}`;
   }
 
-  const releaseLabel = snapshot.release?.tag || "로컬 실행 또는 수동 배포";
+  const releaseLabel = snapshot.release?.tag || "아직 릴리즈 메타데이터 없음";
   const releaseMeta = snapshot.release?.publishedAt
     ? `${releaseLabel} / ${new Date(snapshot.release.publishedAt).toLocaleString("ko-KR")}`
     : releaseLabel;
 
   elements.snapshotList.innerHTML = [
-    ["앱 Base URL", snapshot.runtime.appBaseUrl || "-"],
+    ["App Base URL", snapshot.runtime.appBaseUrl || "-"],
     ["Object Storage", snapshot.runtime.objectStorageProvider || "-"],
     ["작업 건 수", String(snapshot.storage.counts?.jobCases ?? 0)],
     ["현장 기록 수", String(snapshot.storage.counts?.fieldRecords ?? 0)],
@@ -121,7 +132,7 @@ function renderSnapshot(health, snapshot) {
   ].map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("");
 
   if (!snapshot.backups?.length) {
-    elements.backups.innerHTML = '<div class="empty-state">최근 백업이 없습니다.</div>';
+    elements.backups.innerHTML = '<div class="empty-state">아직 생성된 백업이 없습니다.</div>';
     return;
   }
 
@@ -146,7 +157,7 @@ elements.refresh.addEventListener("click", async () => {
   setBusy(elements.refresh, true, "새로고침 중...");
   try {
     await loadOps();
-    showFeedback("운영 스냅샷을 새로고침했습니다.", "success");
+    showFeedback("운영 정보를 새로 불러왔습니다.", "success");
   } catch (error) {
     showFeedback(error.message, "error");
   } finally {

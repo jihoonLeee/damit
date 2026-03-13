@@ -22,10 +22,14 @@ const publicRouteMap = new Map([
   ["/", "landing.html"],
   ["/landing", "landing.html"],
   ["/login", "login.html"],
-  ["/beta-home", "beta-home.html"],
-  ["/beta-app", "beta-app.html"],
+  ["/home", "home.html"],
   ["/app", "index.html"],
   ["/ops", "ops.html"]
+]);
+
+const legacyRedirectMap = new Map([
+  ["/beta-home", "/home"],
+  ["/beta-app", "/app"]
 ]);
 
 export function normalizePathname(urlValue) {
@@ -46,6 +50,12 @@ export async function serveStaticRequest(pathname, response) {
 
   if (pathname.startsWith("/confirm/")) {
     await serveFile(response, path.join(config.publicDir, "confirm.html"));
+    return true;
+  }
+
+  if (legacyRedirectMap.has(pathname)) {
+    response.writeHead(302, { Location: legacyRedirectMap.get(pathname) });
+    response.end();
     return true;
   }
 

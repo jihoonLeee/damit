@@ -6,7 +6,9 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), "field-agreement-"));
+import { createOwnerSession } from "./helpers/session-auth.js";
+
+const tempRoot = await mkdtemp(path.join(os.tmpdir(), "damit-api-"));
 process.chdir(tempRoot);
 
 const { createApp } = await import("../src/app.js");
@@ -22,7 +24,9 @@ config.dbFilePath = path.join(tempRoot, "data", "app.sqlite");
 config.storageEngine = "SQLITE";
 
 await fs.mkdir(config.publicDir, { recursive: true });
-await fs.writeFile(path.join(config.publicDir, "index.html"), "<html></html>", "utf8");
+for (const fileName of ["landing.html", "login.html", "home.html", "ops.html", "index.html", "confirm.html"]) {
+  await fs.writeFile(path.join(config.publicDir, fileName), "<html></html>", "utf8");
+}
 
 const app = createApp();
 const server = createServer((req, res) => app.handle(req, res));
@@ -30,9 +34,23 @@ await new Promise((resolve) => server.listen(0, resolve));
 const port = server.address().port;
 const baseUrl = `http://127.0.0.1:${port}`;
 
-function authHeaders(extra = {}) {
+const ownerSession = await createOwnerSession(baseUrl, config, {
+  email: "owner@example.com",
+  displayName: "운영자",
+  companyName: "다밋 클린"
+});
+
+function sessionHeaders(extra = {}) {
   return {
-    Authorization: "Bearer dev-owner-token",
+    Cookie: ownerSession.cookieHeader,
+    ...extra
+  };
+}
+
+function writeSessionHeaders(extra = {}) {
+  return {
+    Cookie: ownerSession.cookieHeader,
+    "x-csrf-token": ownerSession.csrfToken,
     ...extra
   };
 }
@@ -46,7 +64,7 @@ test("health endpoint returns launch metadata", async () => {
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.status, "ok");
-  assert.equal(payload.ownerMode, "OWNER_ONLY");
+  assert.equal(payload.authMode, "SESSION_ONLY");
   assert.equal(payload.storageEngine, "SQLITE");
 });
 
@@ -60,23 +78,23 @@ test("P0 happy path completes from field record to agreement", async () => {
 
   const fieldRecordResponse = await fetch(`${baseUrl}/api/v1/field-records`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: writeSessionHeaders(),
     body: formData
   });
   assert.equal(fieldRecordResponse.status, 201);
   const fieldRecord = await fieldRecordResponse.json();
   assert.equal(fieldRecord.note, note);
-  assert.match(fieldRecord.photos[0].url, new RegExp(`^/uploads/owners/owner_demo/field-records/${fieldRecord.id}/photo_`));
+  assert.match(fieldRecord.photos[0].url, new RegExp(`^/uploads/companies/${ownerSession.verify.payload.company.id}/field-records/${fieldRecord.id}/photo_[^/]+\.png$`));
 
   const snapshot = await readDb();
   const savedPhoto = snapshot.fieldRecordPhotos.find((item) => item.field_record_id === fieldRecord.id);
   assert.equal(savedPhoto.storage_provider, "LOCAL_VOLUME");
-  assert.match(savedPhoto.object_key, new RegExp(`^owners/owner_demo/field-records/${fieldRecord.id}/photo_`));
+  assert.match(savedPhoto.object_key, new RegExp(`^companies/${ownerSession.verify.payload.company.id}/field-records/${fieldRecord.id}/photo_[^/]+\.png$`));
   assert.equal(savedPhoto.public_url, fieldRecord.photos[0].url);
 
   const jobCaseResponse = await fetch(`${baseUrl}/api/v1/job-cases`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       customerLabel: "송파 힐스테이트 1203호",
       contactMemo: "당근 문의 고객",
@@ -89,21 +107,21 @@ test("P0 happy path completes from field record to agreement", async () => {
 
   const linkResponse = await fetch(`${baseUrl}/api/v1/field-records/${fieldRecord.id}/link-job-case`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ jobCaseId: jobCase.id })
   });
   assert.equal(linkResponse.status, 200);
 
   const quoteResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/quote`, {
     method: "PATCH",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ revisedQuoteAmount: 320000 })
   });
   assert.equal(quoteResponse.status, 200);
 
   const draftResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/draft-message`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ tone: "CUSTOMER_MESSAGE" })
   });
   assert.equal(draftResponse.status, 200);
@@ -112,7 +130,7 @@ test("P0 happy path completes from field record to agreement", async () => {
 
   const agreementResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/agreement-records`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       status: "AGREED",
       confirmationChannel: "KAKAO_OR_SMS",
@@ -123,7 +141,7 @@ test("P0 happy path completes from field record to agreement", async () => {
   assert.equal(agreementResponse.status, 201);
 
   const listResponse = await fetch(`${baseUrl}/api/v1/job-cases?status=AGREED&query=힐스테이트`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(listResponse.status, 200);
   const listPayload = await listResponse.json();
@@ -131,7 +149,7 @@ test("P0 happy path completes from field record to agreement", async () => {
   assert.equal(listPayload.items[0].currentStatus, "AGREED");
 
   const detailResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(detailResponse.status, 200);
   const detail = await detailResponse.json();
@@ -140,30 +158,30 @@ test("P0 happy path completes from field record to agreement", async () => {
   assert.equal(detail.fieldRecords[0].note, note);
 
   const scopeResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/scope-comparison`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(scopeResponse.status, 200);
   const scopePayload = await scopeResponse.json();
   assert.match(scopePayload.extraWorkSummary, /니코틴 오염/);
 
   const draftGetResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/draft-message`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(draftGetResponse.status, 200);
   const draftGetPayload = await draftGetResponse.json();
   assert.match(draftGetPayload.body, /현장 확인 결과/);
 
   const timelineResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/timeline`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(timelineResponse.status, 200);
   const timeline = await timelineResponse.json();
   assert.equal(timeline.items.length, 4);
 });
 
-test("admin backup and reset endpoints work for pilot operations", async () => {
+test("admin backup and reset endpoints work for owner session operations", async () => {
   const before = await fetch(`${baseUrl}/api/v1/admin/storage-status`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(before.status, 200);
   const beforePayload = await before.json();
@@ -173,7 +191,7 @@ test("admin backup and reset endpoints work for pilot operations", async () => {
 
   const backup = await fetch(`${baseUrl}/api/v1/admin/backup`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ label: "test-backup" })
   });
   assert.equal(backup.status, 201);
@@ -181,7 +199,7 @@ test("admin backup and reset endpoints work for pilot operations", async () => {
   assert.match(backupPayload.fileName, /test-backup/);
 
   const snapshot = await fetch(`${baseUrl}/api/v1/admin/ops-snapshot`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(snapshot.status, 200);
   const snapshotPayload = await snapshot.json();
@@ -192,15 +210,15 @@ test("admin backup and reset endpoints work for pilot operations", async () => {
 
   const badReset = await fetch(`${baseUrl}/api/v1/admin/reset-data`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ confirm: "NOPE" })
   });
   assert.equal(badReset.status, 400);
 
   const goodReset = await fetch(`${baseUrl}/api/v1/admin/reset-data`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ confirm: "RESET_PILOT_DATA" })
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ confirm: "RESET_ALL_OPERATIONAL_DATA" })
   });
   assert.equal(goodReset.status, 200);
   const resetPayload = await goodReset.json();
@@ -219,7 +237,7 @@ test("returns documented validation errors", async () => {
 
   const missingPhotoResponse = await fetch(`${baseUrl}/api/v1/field-records`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: writeSessionHeaders(),
     body: missingPhotoForm
   });
   assert.equal(missingPhotoResponse.status, 422);
@@ -227,7 +245,7 @@ test("returns documented validation errors", async () => {
   assert.equal(missingPhotoPayload.error.code, "PHOTO_REQUIRED");
 
   const badFilterResponse = await fetch(`${baseUrl}/api/v1/job-cases?status=BAD`, {
-    headers: authHeaders()
+    headers: sessionHeaders()
   });
   assert.equal(badFilterResponse.status, 400);
   const badFilterPayload = await badFilterResponse.json();

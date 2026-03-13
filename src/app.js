@@ -66,18 +66,6 @@ async function handleApiRequest(request, response, repositories) {
     return;
   }
 
-  if (request.method === "GET" && pathname === "/api/v1/health") {
-    const storage = await repositories.systemRepository.getStorageSummary();
-    json(response, 200, {
-      status: "ok",
-      service: "field-agreement-assistant",
-      ownerMode: "OWNER_ONLY",
-      storageEngine: storage.storageEngine,
-      timestamp: nowIso(),
-      counts: storage.counts
-    });
-    return;
-  }
 
   const publicConfirmationMatch = pathname.match(/^\/api\/v1\/public\/confirm\/([^/]+)$/);
   if (request.method === "GET" && publicConfirmationMatch) {
@@ -339,7 +327,7 @@ async function handleApiRequest(request, response, repositories) {
     const createdAt = nowIso();
     const fieldRecord = {
       id: fieldRecordId,
-      owner_id: businessContext.ownerId,
+      owner_id: businessContext.ownerId || businessContext.userId,
       company_id: businessContext.companyId,
       created_by_user_id: businessContext.userId,
       job_case_id: null,
@@ -355,7 +343,7 @@ async function handleApiRequest(request, response, repositories) {
       const upload = await saveUpload(file, {
         fieldRecordId,
         companyId: businessContext.companyId,
-        ownerId: businessContext.ownerId
+        ownerId: businessContext.ownerId || businessContext.userId
       });
       photos.push({
         id: upload.id,
@@ -387,7 +375,7 @@ async function handleApiRequest(request, response, repositories) {
     const result = await repositories.jobCaseRepository.create({
       jobCase: {
         id: createId("jc"),
-        owner_id: businessContext.ownerId,
+        owner_id: businessContext.ownerId || businessContext.userId,
         company_id: businessContext.companyId,
         created_by_user_id: businessContext.userId,
         assigned_user_id: businessContext.mode === "SESSION" && businessContext.role === "STAFF" ? businessContext.userId : null,
@@ -483,10 +471,10 @@ async function handleApiRequest(request, response, repositories) {
     const detailSource = await getJobCaseDetailSourceOrThrow(repositories, jobCaseId, businessContext);
 
     if (!canManageQuote(detailSource.jobCase, businessContext)) {
-      throw new HttpError(403, "JOB_CASE_FORBIDDEN", "???臾믩씜 椰꾨똻??疫뀀뜆釉????륁젟??亦낅슦釉????곷선??");
+      throw new HttpError(403, "JOB_CASE_FORBIDDEN", "현재 권한으로는 이 작업 건의 견적을 변경할 수 없습니다.");
     }
     if (!Number.isInteger(detailSource.jobCase.original_quote_amount)) {
-      throw new HttpError(422, "VALIDATION_ERROR", "?癒?삋 野꺫딆읅 疫뀀뜆釉????낆젾??곻폒?紐꾩뒄", {
+      throw new HttpError(422, "VALIDATION_ERROR", "기존 견적 금액이 없어 변경 견적을 계산할 수 없습니다.", {
         originalQuoteAmount: "REQUIRED"
       });
     }
@@ -737,14 +725,6 @@ async function handleApiRequest(request, response, repositories) {
 }
 
 function buildRepositoryReadScope(businessContext) {
-  if (businessContext.mode === "OWNER_TOKEN") {
-    return {
-      companyId: null,
-      actorUserId: null,
-      role: "OWNER"
-    };
-  }
-
   return {
     companyId: businessContext.companyId,
     actorUserId: businessContext.userId,
@@ -852,7 +832,7 @@ async function appendAuditLogIfPossible(repositories, businessContext, entry) {
 async function requireSessionContext(request, repositories) {
   const authContext = await getAuthContext(request, repositories);
   if (authContext.mode !== "SESSION") {
-    throw new HttpError(403, "SESSION_AUTH_REQUIRED", "\uBCA0\uD0C0 \uB85C\uADF8\uC778 \uC138\uC158\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.");
+    throw new HttpError(403, "SESSION_AUTH_REQUIRED", "세션 로그인이 필요합니다.");
   }
   return authContext;
 }
@@ -865,7 +845,7 @@ async function requireBusinessContext(request, repositories, options = {}) {
     }
     return {
       mode: "SESSION",
-      ownerId: config.ownerId,
+      ownerId: authContext.userId || config.ownerId,
       companyId: authContext.companyId,
       userId: authContext.userId,
       role: authContext.role,
@@ -873,18 +853,7 @@ async function requireBusinessContext(request, repositories, options = {}) {
     };
   }
 
-  if (authContext.mode === "OWNER_TOKEN") {
-    return {
-      mode: "OWNER_TOKEN",
-      ownerId: config.ownerId,
-      companyId: null,
-      userId: config.ownerId,
-      role: "OWNER",
-      companies: []
-    };
-  }
-
-  throw new HttpError(401, "UNAUTHORIZED", "\uB2E4\uC2DC \uB85C\uADF8\uC778\uD574\uC8FC\uC138\uC694");
+  throw new HttpError(401, "UNAUTHORIZED", "로그인이 필요합니다.");
 }
 
 function assertActiveCompanyMatch(authContext, companyId) {
@@ -900,9 +869,6 @@ function assertRole(authContext, allowedRoles) {
 }
 
 function canReadJobCase(jobCase, businessContext) {
-  if (businessContext.mode === "OWNER_TOKEN") {
-    return true;
-  }
   if (jobCase.company_id !== businessContext.companyId) {
     return false;
   }
@@ -915,25 +881,12 @@ function canReadJobCase(jobCase, businessContext) {
 }
 
 function canManageQuote(jobCase, businessContext) {
-  if (businessContext.mode === "OWNER_TOKEN") {
-    return true;
-  }
   if (jobCase.company_id !== businessContext.companyId) {
     return false;
   }
   return businessContext.role === "OWNER" || businessContext.role === "MANAGER";
 }
 
-function getScopedJobCaseOrThrow(db, jobCaseId, businessContext, options = {}) {
-  const jobCase = db.jobCases.find((item) => item.id === jobCaseId);
-  if (!jobCase || !canReadJobCase(jobCase, businessContext)) {
-    throw new HttpError(404, "JOB_CASE_NOT_FOUND", "\uC791\uC5C5 \uAC74\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC5B4\uC694");
-  }
-  if (options.requireManager && !canManageQuote(jobCase, businessContext)) {
-    throw new HttpError(403, "JOB_CASE_FORBIDDEN", "\uC774 \uC791\uC5C5 \uAC74\uC758 \uAE08\uC561\uC744 \uC218\uC815\uD560 \uAD8C\uD55C\uC774 \uC5C6\uC5B4\uC694.");
-  }
-  return jobCase;
-}
 
 async function getFieldRecordSourceOrThrow(repositories, fieldRecordId, businessContext) {
   const fieldRecord = await repositories.fieldRecordRepository.getById(fieldRecordId, {
@@ -941,18 +894,15 @@ async function getFieldRecordSourceOrThrow(repositories, fieldRecordId, business
   });
 
   if (!fieldRecord) {
-    throw new HttpError(404, "FIELD_RECORD_NOT_FOUND", "\uD604\uC7A5 \uAE30\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC5B4\uC694");
-  }
-  if (businessContext.mode === "OWNER_TOKEN") {
-    return fieldRecord;
+    throw new HttpError(404, "FIELD_RECORD_NOT_FOUND", "현장 기록을 찾을 수 없습니다.");
   }
   if (fieldRecord.company_id !== businessContext.companyId) {
-    throw new HttpError(404, "FIELD_RECORD_NOT_FOUND", "\uD604\uC7A5 \uAE30\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC5B4\uC694");
+    throw new HttpError(404, "FIELD_RECORD_NOT_FOUND", "현장 기록을 찾을 수 없습니다.");
   }
   if (businessContext.role === "OWNER" || businessContext.role === "MANAGER" || fieldRecord.created_by_user_id === businessContext.userId) {
     return fieldRecord;
   }
-  throw new HttpError(404, "FIELD_RECORD_NOT_FOUND", "\uD604\uC7A5 \uAE30\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC5B4\uC694");
+  throw new HttpError(404, "FIELD_RECORD_NOT_FOUND", "현장 기록을 찾을 수 없습니다.");
 }
 
 function resolvePhotoUrl(photo) {

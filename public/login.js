@@ -28,7 +28,7 @@ async function request(url, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload?.error?.message || "요청에 실패했습니다.");
+    const error = new Error(payload?.error?.message || "요청을 처리하지 못했습니다.");
     error.code = payload?.error?.code;
     throw error;
   }
@@ -43,10 +43,10 @@ async function issueChallenge(email) {
       invitationToken: state.invitationToken || undefined
     })
   });
-  showFeedback("로그인 링크를 보냈습니다. 이메일을 확인해주세요.", "success");
+  showFeedback("로그인 링크를 만들었습니다. 받은 링크를 확인해 주세요.", "success");
   if (payload.debugMagicLink) {
     debugLink.classList.remove("hidden");
-    debugLink.innerHTML = `<strong>개발용 magic link</strong><a href="${payload.debugMagicLink}">${payload.debugMagicLink}</a>`;
+    debugLink.innerHTML = `<strong>디버그 매직 링크</strong><a href="${payload.debugMagicLink}">${payload.debugMagicLink}</a>`;
   }
 }
 
@@ -62,7 +62,7 @@ async function verifyChallenge(extra = {}) {
   });
   showFeedback(`${payload.user.displayName}님, 로그인되었습니다.`, "success");
   window.setTimeout(() => {
-    window.location.href = "/beta-home";
+    window.location.href = "/home";
   }, 400);
 }
 
@@ -101,21 +101,21 @@ async function bootstrap() {
 
   if (state.invitationToken) {
     inviteBanner.classList.remove("hidden");
-    inviteBanner.innerHTML = `<strong>팀 초대 링크입니다.</strong><p>${state.invitedEmail || "초대받은 이메일"}로 로그인하면 초대가 자동으로 연결됩니다.</p>`;
+    inviteBanner.innerHTML = `<strong>회사 초대 링크입니다.</strong><p>${state.invitedEmail || "초대된 사용자"} 주소로 초대를 수락하는 로그인 흐름입니다.</p>`;
   }
 
   if (!state.challengeId || !state.token) {
     return;
   }
 
-  showFeedback("로그인 링크를 확인하는 중입니다...");
+  showFeedback("로그인 링크를 확인하고 있습니다...");
   try {
     await verifyChallenge();
   } catch (error) {
     if (error.code === "AUTH_SETUP_REQUIRED") {
       challengeForm.classList.add("hidden");
       setupForm.classList.remove("hidden");
-      showFeedback("최초 로그인이라 업체 이름이 필요합니다.", "error");
+      showFeedback("처음 로그인이라 회사와 기본 정보를 먼저 입력해 주세요.", "error");
       return;
     }
     showFeedback(error.message, "error");

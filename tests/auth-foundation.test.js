@@ -27,7 +27,8 @@ config.appBaseUrl = "";
 await fs.mkdir(config.publicDir, { recursive: true });
 await fs.writeFile(path.join(config.publicDir, "landing.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "login.html"), "<html></html>", "utf8");
-await fs.writeFile(path.join(config.publicDir, "beta-home.html"), "<html></html>", "utf8");
+await fs.writeFile(path.join(config.publicDir, "home.html"), "<html></html>", "utf8");
+await fs.writeFile(path.join(config.publicDir, "confirm.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "ops.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "index.html"), "<html></html>", "utf8");
 
@@ -249,15 +250,21 @@ test("owner can invite a user, invited user joins second company, and switches c
   assert.equal(membershipsPayload.items.length, 1);
 });
 
-test("static entry routes are served for landing, login, beta-home, ops, and app", async () => {
+test("static entry routes are served for landing, login, home, ops, and app", async () => {
   const landing = await fetch(`${baseUrl}/`);
   const login = await fetch(`${baseUrl}/login`);
-  const betaHome = await fetch(`${baseUrl}/beta-home`);
+  const home = await fetch(`${baseUrl}/home`);
+  const legacyHome = await fetch(`${baseUrl}/beta-home`, { redirect: "manual" });
+  const legacyApp = await fetch(`${baseUrl}/beta-app`, { redirect: "manual" });
   const opsPage = await fetch(`${baseUrl}/ops`);
   const appPage = await fetch(`${baseUrl}/app`);
   assert.equal(landing.status, 200);
   assert.equal(login.status, 200);
-  assert.equal(betaHome.status, 200);
+  assert.equal(home.status, 200);
+  assert.equal(legacyHome.status, 302);
+  assert.equal(legacyHome.headers.get("location"), "/home");
+  assert.equal(legacyApp.status, 302);
+  assert.equal(legacyApp.headers.get("location"), "/app");
   assert.equal(opsPage.status, 200);
   assert.equal(appPage.status, 200);
 });

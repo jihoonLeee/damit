@@ -18,11 +18,11 @@ export const config = {
   postgresSslMode: process.env.POSTGRES_SSL_MODE || process.env.PGSSLMODE || "",
   postgresSslRequire: process.env.POSTGRES_SSL_REQUIRE || "",
   postgresSslCaPath: process.env.POSTGRES_SSL_CA_PATH || "",
-  postgresApplicationName: process.env.POSTGRES_APPLICATION_NAME || "field-agreement-assistant",
+  postgresApplicationName: process.env.POSTGRES_APPLICATION_NAME || "damit",
   postgresPoolMax: process.env.POSTGRES_POOL_MAX || "10",
   appBaseUrl: process.env.APP_BASE_URL || "",
   mailProvider: process.env.MAIL_PROVIDER || "",
-  mailFrom: process.env.MAIL_FROM || "login@field-agreement.local",
+  mailFrom: process.env.MAIL_FROM || "login@damit.local",
   resendApiKey: process.env.RESEND_API_KEY || "",
   nodeEnv: process.env.NODE_ENV || "development",
   objectStorageProvider: process.env.OBJECT_STORAGE_PROVIDER || "LOCAL_VOLUME",
@@ -30,6 +30,5 @@ export const config = {
   sessionCookieName: process.env.SESSION_COOKIE_NAME || "faa_session",
   refreshCookieName: process.env.REFRESH_COOKIE_NAME || "faa_refresh",
   csrfCookieName: process.env.CSRF_COOKIE_NAME || "faa_csrf",
-  ownerToken: process.env.OWNER_TOKEN || "dev-owner-token",
-  ownerId: process.env.OWNER_ID || "owner_demo"
+  ownerId: process.env.OWNER_ID || "system_owner"
 };

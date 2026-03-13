@@ -170,11 +170,11 @@ async function getCustomerConfirmationRowForUpdate(client, tokenHash) {
 
 async function assertAvailableCustomerConfirmation(client, row, codePrefix = "CUSTOMER_CONFIRMATION") {
   if (!row) {
-    throw new HttpError(404, `${codePrefix}_NOT_FOUND`, "?? ?? ??? ?? ? ???");
+    throw new HttpError(404, `${codePrefix}_NOT_FOUND`, "고객 확인 링크를 찾을 수 없습니다.");
   }
 
   if (row.status === "REVOKED") {
-    throw new HttpError(410, `${codePrefix}_REVOKED`, "? ??? ? ?? ??? ? ???");
+    throw new HttpError(410, `${codePrefix}_REVOKED`, "이미 취소된 고객 확인 링크입니다.");
   }
 
   if (new Date(row.expires_at).getTime() < Date.now()) {
@@ -195,7 +195,7 @@ async function assertAvailableCustomerConfirmation(client, row, codePrefix = "CU
       });
     }
 
-    throw new HttpError(410, `${codePrefix}_EXPIRED`, "?? ?? ??? ??????");
+    throw new HttpError(410, `${codePrefix}_EXPIRED`, "고객 확인 링크가 만료되었습니다.");
   }
 }
 function buildListByScopeQuery(scope = {}) {
@@ -513,16 +513,16 @@ async function resolveInvitationForAuth(client, invitationToken, challengeEmail,
   const invitation = normalizeRow(invitationResult.rows[0] || null);
 
   if (!invitation) {
-    throw new HttpError(404, 'INVITATION_NOT_FOUND', '?? ??? ?? ? ???');
+    throw new HttpError(404, 'INVITATION_NOT_FOUND', '초대 정보를 찾을 수 없습니다.');
   }
   if (invitation.status !== 'ISSUED') {
-    throw new HttpError(409, 'INVITATION_NOT_AVAILABLE', '??? ? ?? ?? ????');
+    throw new HttpError(409, 'INVITATION_NOT_AVAILABLE', '이미 사용할 수 없는 초대입니다.');
   }
   if (new Date(invitation.expires_at).getTime() < Date.now()) {
-    throw new HttpError(410, 'INVITATION_EXPIRED', '?? ??? ?????');
+    throw new HttpError(410, 'INVITATION_EXPIRED', '초대 링크가 만료되었습니다.');
   }
   if (invitation.email !== challengeEmail) {
-    throw new HttpError(403, 'INVITATION_EMAIL_MISMATCH', '???? ???? ??? ???? ????');
+    throw new HttpError(403, 'INVITATION_EMAIL_MISMATCH', '초대받은 이메일과 로그인 이메일이 일치하지 않습니다.');
   }
 
   const membershipResult = await client.query(
@@ -1205,7 +1205,7 @@ export function createPostgresRepositoryBundle({
           await assertAvailableCustomerConfirmation(client, row, 'CUSTOMER_CONFIRMATION');
 
           if (row.confirmed_at || row.status === 'CONFIRMED') {
-            throw new HttpError(409, 'CUSTOMER_CONFIRMATION_ALREADY_ACKNOWLEDGED', '?? ?? ??? ??? ????');
+            throw new HttpError(409, 'CUSTOMER_CONFIRMATION_ALREADY_ACKNOWLEDGED', '이미 고객 확인이 완료된 링크입니다.');
           }
 
           const timestamp = new Date().toISOString();
@@ -1257,7 +1257,7 @@ export function createPostgresRepositoryBundle({
         if (recent) {
           const elapsed = Date.now() - new Date(recent.created_at).getTime();
           if (elapsed < 60 * 1000) {
-            throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '?? ? ?? ??????');
+            throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '잠시 후 다시 시도해 주세요.');
           }
         }
 
@@ -1268,7 +1268,7 @@ export function createPostgresRepositoryBundle({
         );
         const recentCount = Number(recentCountResult.rows[0]?.count || 0);
         if (recentCount >= 5) {
-          throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '??? ?? ???. ?? ? ?? ??????');
+          throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '로그인 링크 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
         }
 
         const userResult = await pool.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [normalizedEmail]);
@@ -1324,16 +1324,16 @@ export function createPostgresRepositoryBundle({
           );
           const challenge = normalizeRow(challengeResult.rows[0] || null);
           if (!challenge) {
-            throw new HttpError(404, 'AUTH_CHALLENGE_NOT_FOUND', '??? ??? ?? ? ???');
+            throw new HttpError(404, 'AUTH_CHALLENGE_NOT_FOUND', '로그인 챌린지를 찾을 수 없습니다.');
           }
           if (challenge.status !== 'ISSUED') {
-            throw new HttpError(409, 'AUTH_CHALLENGE_NOT_AVAILABLE', '?? ????? ??? ??? ?????');
+            throw new HttpError(409, 'AUTH_CHALLENGE_NOT_AVAILABLE', '이미 사용되었거나 사용할 수 없는 로그인 챌린지입니다.');
           }
           if (challenge.token_hash !== tokenHash) {
-            throw new HttpError(403, 'AUTH_CHALLENGE_INVALID', '??? ??? ???? ???');
+            throw new HttpError(403, 'AUTH_CHALLENGE_INVALID', '로그인 검증 토큰이 올바르지 않습니다.');
           }
           if (new Date(challenge.expires_at).getTime() < Date.now()) {
-            throw new HttpError(410, 'AUTH_CHALLENGE_EXPIRED', '??? ??? ?????');
+            throw new HttpError(410, 'AUTH_CHALLENGE_EXPIRED', '로그인 챌린지가 만료되었습니다.');
           }
 
           const userResult = await client.query(`SELECT * FROM users WHERE email = $1 LIMIT 1`, [challenge.email]);
@@ -1373,7 +1373,7 @@ export function createPostgresRepositoryBundle({
           let memberships = await listActiveMembershipRows(client, user.id);
 
           if (!invitedMembership && memberships.length === 0 && !String(companyName || '').trim()) {
-            throw new HttpError(409, 'AUTH_SETUP_REQUIRED', '?? ????? ?? ??? ?????.', {
+            throw new HttpError(409, 'AUTH_SETUP_REQUIRED', '회사 이름을 입력해 첫 로그인 설정을 완료해 주세요.', {
               companyName: 'REQUIRED'
             });
           }
@@ -1432,7 +1432,7 @@ export function createPostgresRepositoryBundle({
             : memberships[0];
 
           if (!selectedMembership) {
-            throw new HttpError(500, 'AUTH_MEMBERSHIP_RESOLUTION_FAILED', '?? ??? ???? ?????.');
+            throw new HttpError(500, 'AUTH_MEMBERSHIP_RESOLUTION_FAILED', '활성 회사 멤버십을 확인하지 못했습니다.');
           }
 
           const session = await createAuthSession(client, {
@@ -1473,10 +1473,10 @@ export function createPostgresRepositoryBundle({
           );
           const session = normalizeRow(sessionResult.rows[0] || null);
           if (!session || session.revoked_at) {
-            throw new HttpError(401, 'AUTH_REFRESH_INVALID', '??? ?? ??????');
+            throw new HttpError(401, 'AUTH_REFRESH_INVALID', '리프레시 세션이 유효하지 않습니다.');
           }
           if (new Date(session.expires_at).getTime() < Date.now()) {
-            throw new HttpError(401, 'AUTH_REFRESH_EXPIRED', '??? ?????. ?? ???????');
+            throw new HttpError(401, 'AUTH_REFRESH_EXPIRED', '리프레시 세션이 만료되었습니다. 다시 로그인해 주세요.');
           }
 
           const nextRefreshToken = crypto.randomBytes(24).toString('base64url');
@@ -1487,7 +1487,7 @@ export function createPostgresRepositoryBundle({
           const nextResult = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1`, [session.id]);
           const context = await buildSessionPayloadFromClient(client, nextResult.rows[0] || null);
           if (!context) {
-            throw new HttpError(401, 'AUTH_SESSION_INVALID', '??? ???? ???. ?? ???????');
+            throw new HttpError(401, 'AUTH_SESSION_INVALID', '세션이 유효하지 않습니다. 다시 로그인해 주세요.');
           }
 
           return {
@@ -1518,7 +1518,7 @@ export function createPostgresRepositoryBundle({
           const sessionResult = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1 FOR UPDATE`, [sessionId]);
           const session = normalizeRow(sessionResult.rows[0] || null);
           if (!session || session.user_id !== userId || session.revoked_at) {
-            throw new HttpError(401, 'AUTH_SESSION_INVALID', '??? ???? ???.');
+            throw new HttpError(401, 'AUTH_SESSION_INVALID', '세션이 유효하지 않습니다.');
           }
 
           const membershipResult = await client.query(
@@ -1533,7 +1533,7 @@ export function createPostgresRepositoryBundle({
           );
           const membership = normalizeRow(membershipResult.rows[0] || null);
           if (!membership) {
-            throw new HttpError(403, 'COMPANY_ACCESS_DENIED', '??? ? ?? ?????.');
+            throw new HttpError(403, 'COMPANY_ACCESS_DENIED', '해당 회사에 접근할 권한이 없습니다.');
           }
 
           await client.query(
@@ -1554,17 +1554,17 @@ export function createPostgresRepositoryBundle({
       createInvitation: async ({ companyId, email, role, invitedByUserId }) => {
         const normalizedEmail = String(email || '').trim().toLowerCase();
         if (!normalizedEmail) {
-          throw new HttpError(422, 'INVITATION_EMAIL_REQUIRED', '??? ???? ?????.');
+          throw new HttpError(422, 'INVITATION_EMAIL_REQUIRED', '초대 이메일을 입력해 주세요.');
         }
         if (!['MANAGER', 'STAFF'].includes(role)) {
-          throw new HttpError(422, 'INVITATION_ROLE_INVALID', '?? ??? ???? ????.');
+          throw new HttpError(422, 'INVITATION_ROLE_INVALID', '초대 역할이 올바르지 않습니다.');
         }
 
         return withTransaction(pool, async (client) => {
           const companyResult = await client.query(`SELECT * FROM companies WHERE id = $1 LIMIT 1`, [companyId]);
           const company = normalizeRow(companyResult.rows[0] || null);
           if (!company) {
-            throw new HttpError(404, 'COMPANY_NOT_FOUND', '??? ?? ? ???');
+            throw new HttpError(404, 'COMPANY_NOT_FOUND', '회사를 찾을 수 없습니다.');
           }
 
           const recentResult = await client.query(
@@ -1578,7 +1578,7 @@ export function createPostgresRepositoryBundle({
           );
           const recent = normalizeRow(recentResult.rows[0] || null);
           if (recent && Date.now() - new Date(recent.created_at).getTime() < 5 * 60 * 1000) {
-            throw new HttpError(429, 'INVITATION_RATE_LIMITED', '?? ? ?? ??????.');
+            throw new HttpError(429, 'INVITATION_RATE_LIMITED', '초대 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
           }
 
           const invitationToken = crypto.randomBytes(24).toString('base64url');
