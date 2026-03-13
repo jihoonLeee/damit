@@ -7,12 +7,20 @@ PARTIAL GO
 ## What is complete
 
 - self-host workflows support OAuth-based Tailscale configuration in code
-- workflow bootstrap is being normalized so manual dispatch and release deploy stay healthy
+- workflow bootstrap was normalized so manual dispatch and release deploy stay healthy
+- GitHub Actions self-host deploy recovered and completed successfully
 - CI and self-host deploy flow now align with the production-consolidation direction
+
+## Latest working evidence
+
+- workflow run: `23032231660`
+- result: `success`
+- URL: `https://github.com/jihoonLeee/damit/actions/runs/23032231660`
+- current path used: `Join Tailscale network (Auth key fallback)`
 
 ## What is still blocking the warning cleanup
 
-The repository does not yet contain these secrets:
+The repository still does not contain these secrets:
 
 - `TAILSCALE_OAUTH_CLIENT_ID`
 - `TAILSCALE_OAUTH_SECRET`
@@ -22,13 +30,7 @@ GitHub repository secret inspection on 2026-03-13 showed only:
 - `TAILSCALE_AUTHKEY`
 - self-host SSH/path secrets
 
-Because of that, the latest workflow run still used the auth-key fallback path and produced the Tailscale deprecation warning.
-
-## Evidence
-
-- workflow run: `23030979936`
-- observed path: `Join Tailscale network (Auth key fallback)`
-- observed annotation: deprecated `authkey` input warning
+Because of that, the latest successful workflow run still used the auth-key fallback path and produced the Tailscale deprecation warning.
 
 ## PM recommendation
 
