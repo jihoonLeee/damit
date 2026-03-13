@@ -44,17 +44,13 @@ jobs:
           hostname: github-actions-damit-release-deploy
           ping: ${{ secrets.SELF_HOST_TAILNET_HOST }}
 
-      - name: Start SSH agent
+      - name: Prepare deploy key
         shell: bash
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
-          cat > ~/.ssh/github_actions_deploy_key <<'EOF'
-          ${{ secrets.SELF_HOST_SSH_KEY }}
-          EOF
+          printf '%s\n' '${{ secrets.SELF_HOST_SSH_KEY }}' > ~/.ssh/github_actions_deploy_key
           chmod 600 ~/.ssh/github_actions_deploy_key
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/github_actions_deploy_key
 
       - name: Trust server host key
         shell: bash
@@ -68,6 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           rsync -az --delete \
+            -e "ssh -i ~/.ssh/github_actions_deploy_key -p ${{ secrets.SELF_HOST_SSH_PORT }}" \
             --filter='P deploy/homelab/.env' \
             --exclude '.git/' \
             --exclude 'node_modules/' \
@@ -80,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+          ssh -i ~/.ssh/github_actions_deploy_key -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/deploy.sh"
 
       - name: Build release metadata file
@@ -99,11 +96,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          scp -P "${{ secrets.SELF_HOST_SSH_PORT }}" .release-version "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/.release-version"
+          scp -i ~/.ssh/github_actions_deploy_key -P "${{ secrets.SELF_HOST_SSH_PORT }}" .release-version "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/.release-version"
 
       - name: Smoke check on server
         shell: bash
         run: |
           set -euo pipefail
-          ssh -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+          ssh -i ~/.ssh/github_actions_deploy_key -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
             "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash ./deploy/homelab/smoke.sh"
