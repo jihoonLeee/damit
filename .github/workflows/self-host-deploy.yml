@@ -8,6 +8,7 @@ permissions:
 
 env:
   TAILSCALE_TAGS: ${{ secrets.TAILSCALE_TAGS != '' && secrets.TAILSCALE_TAGS || 'tag:ci' }}
+  TAILSCALE_OAUTH_READY: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID != '' && secrets.TAILSCALE_OAUTH_SECRET != '' }}
 
 concurrency:
   group: self-host-deploy
@@ -21,7 +22,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Join Tailscale network (OAuth client)
-        if: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID != '' && secrets.TAILSCALE_OAUTH_SECRET != '' }}
+        if: ${{ env.TAILSCALE_OAUTH_READY == 'true' }}
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
@@ -31,7 +32,7 @@ jobs:
           ping: ${{ secrets.SELF_HOST_TAILNET_HOST }}
 
       - name: Join Tailscale network (Auth key fallback)
-        if: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID == '' || secrets.TAILSCALE_OAUTH_SECRET == '' }}
+        if: ${{ env.TAILSCALE_OAUTH_READY != 'true' }}
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
