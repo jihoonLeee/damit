@@ -994,6 +994,24 @@ body.review-detail .card {
 .brand-lockup-image.compact {
   width: 188px;
 }
+.brand-lockup-mark {
+  display: block;
+  width: 54px;
+  height: auto;
+  flex: 0 0 auto;
+}
+.brand-lockup-mark.compact {
+  width: 42px;
+}
+.brand-lockup-wordmark {
+  display: block;
+  width: 172px;
+  height: auto;
+  flex: 0 0 auto;
+}
+.brand-lockup-wordmark.compact {
+  width: 148px;
+}
 .brand-mark {
   width: 64px;
   height: 64px;
@@ -1026,6 +1044,21 @@ body.review-detail .card {
 
   .brand-lockup-image.compact {
     width: 168px;
+  }
+  .brand-lockup-mark {
+    width: 46px;
+  }
+
+  .brand-lockup-mark.compact {
+    width: 36px;
+  }
+
+  .brand-lockup-wordmark {
+    width: 152px;
+  }
+
+  .brand-lockup-wordmark.compact {
+    width: 132px;
   }
 }
 .landing-sublead {
