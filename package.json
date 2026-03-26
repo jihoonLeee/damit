@@ -21,9 +21,12 @@
     "test:confirm": "node tests/customer-confirmation.test.js",
     "pg:preflight": "node scripts/postgres-preflight.mjs",
     "env:check:staging": "node scripts/runtime-env-check.mjs --profile=staging",
-    "env:check:production": "node scripts/runtime-env-check.mjs --profile=production"
+    "env:check:production": "node scripts/runtime-env-check.mjs --profile=production",
+    "smoke:mail:production-local": "node scripts/mail-login-smoke.mjs"
   },
   "dependencies": {
-    "pg": "^8.20.0"
+    "npm": "^11.12.0",
+    "pg": "^8.20.0",
+    "run": "^1.5.0"
   }
 }

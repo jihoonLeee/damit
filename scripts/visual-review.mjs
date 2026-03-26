@@ -7,34 +7,94 @@ import { fileURLToPath } from "node:url";
 
 import { createApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { createAuthCookieHeaders } from "../src/contexts/auth/application/auth-runtime.js";
+import { writeDb } from "../src/store.js";
+import { createOwnerSession, getCookieValue } from "../tests/helpers/session-auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRoot = path.resolve(__dirname, "..");
 const outputDir = path.join(workspaceRoot, "output", "visual-review");
-const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+const edgeCandidates = [
+  process.env.EDGE_PATH,
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+].filter(Boolean);
+
+async function resolveEdgePath() {
+  for (const candidate of edgeCandidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  throw new Error(`Microsoft Edge executable was not found. Checked: ${edgeCandidates.join(", ")}`);
+}
+
 
 async function main() {
   await fs.mkdir(outputDir, { recursive: true });
 
+  const edgePath = await resolveEdgePath();
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "field-agreement-review-"));
   const tempDataDir = path.join(tempRoot, "data");
   const tempUploadDir = path.join(tempDataDir, "uploads");
-  const tempDbPath = path.join(tempDataDir, "db.json");
+  const tempDbPath = path.join(tempDataDir, "app.sqlite");
 
   config.publicDir = path.join(workspaceRoot, "public");
-  config.storageEngine = "JSON_FILE";
+  config.storageEngine = "SQLITE";
   config.dataDir = tempDataDir;
   config.uploadDir = tempUploadDir;
   config.dbFilePath = tempDbPath;
-
-  await seedReviewData(tempUploadDir, tempDbPath);
+  config.authDebugLinks = true;
+  config.systemAdminEmails = ["review-admin@example.com"];
 
   const app = createApp();
-  const server = createServer((req, res) => app.handle(req, res));
+  const server = createServer((req, res) => {
+    const requestUrl = new URL(req.url, "http://127.0.0.1");
+    if (requestUrl.pathname === "/__visual-review-session") {
+      return serveVisualReviewSessionRedirect(res, requestUrl, reviewSessions);
+    }
+    return app.handle(req, res);
+  });
   await new Promise((resolve) => server.listen(0, resolve));
   const port = server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
+
+  const ownerSession = await createOwnerSession(baseUrl, config, {
+    email: "review-owner@example.com",
+    displayName: "Review Owner",
+    companyName: "Damit Review"
+  });
+  const adminSession = await createOwnerSession(baseUrl, config, {
+    email: "review-admin@example.com",
+    displayName: "Review Admin",
+    companyName: "Damit Internal"
+  });
+  const meResponse = await fetch(`${baseUrl}/api/v1/me`, {
+    headers: { Cookie: ownerSession.cookieHeader }
+  });
+  const mePayload = await meResponse.json();
+  const reviewSessions = {
+    owner: {
+      sessionId: getCookieValue(ownerSession.cookieHeader, config.sessionCookieName),
+      refreshToken: getCookieValue(ownerSession.cookieHeader, config.refreshCookieName),
+      csrfToken: getCookieValue(ownerSession.cookieHeader, config.csrfCookieName)
+    },
+    admin: {
+      sessionId: getCookieValue(adminSession.cookieHeader, config.sessionCookieName),
+      refreshToken: getCookieValue(adminSession.cookieHeader, config.refreshCookieName),
+      csrfToken: getCookieValue(adminSession.cookieHeader, config.csrfCookieName)
+    }
+  };
+
+  await seedReviewData(tempUploadDir, {
+    ownerId: mePayload.user.id,
+    companyId: mePayload.company.id
+  });
 
   try {
     await captureScreenshot({
@@ -42,34 +102,8 @@ async function main() {
       width: 1440,
       height: 1600,
       outputPath: path.join(outputDir, "desktop-overview.png"),
-      timeBudget: 10000
-    });
-
-    await captureScreenshot({
-      url: `${baseUrl}/?review=detail`,
-      width: 390,
-      height: 844,
-      outputPath: path.join(outputDir, "mobile-detail-top.png"),
-      timeBudget: 12000,
-      mobile: true
-    });
-
-    await captureScreenshot({
-      url: `${baseUrl}/?review=agreement`,
-      width: 390,
-      height: 1200,
-      outputPath: path.join(outputDir, "mobile-agreement.png"),
-      timeBudget: 14000,
-      mobile: true
-    });
-
-    await captureScreenshot({
-      url: `${baseUrl}/?review=copy`,
-      width: 390,
-      height: 844,
-      outputPath: path.join(outputDir, "mobile-copy.png"),
-      timeBudget: 12000,
-      mobile: true
+      timeBudget: 10000,
+      edgePath
     });
 
     await captureScreenshot({
@@ -78,23 +112,168 @@ async function main() {
       height: 844,
       outputPath: path.join(outputDir, "mobile-overview.png"),
       timeBudget: 10000,
-      mobile: true
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app?review=detail"),
+      width: 390,
+      height: 900,
+      outputPath: path.join(outputDir, "mobile-detail-top.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app?review=agreement"),
+      width: 390,
+      height: 980,
+      outputPath: path.join(outputDir, "mobile-agreement.png"),
+      timeBudget: 16000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app?review=copy"),
+      width: 390,
+      height: 844,
+      outputPath: path.join(outputDir, "mobile-copy.png"),
+      timeBudget: 12000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/home"),
+      width: 1440,
+      height: 2600,
+      outputPath: path.join(outputDir, "desktop-home-authenticated.png"),
+      timeBudget: 12000,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app"),
+      width: 1440,
+      height: 1600,
+      outputPath: path.join(outputDir, "desktop-app-authenticated.png"),
+      timeBudget: 12000,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app?review=ops-return&caseId=jc_demo_2&source=ops&reason=quote-missing&target=quote-card"),
+      width: 390,
+      height: 980,
+      outputPath: path.join(outputDir, "mobile-app-ops-return.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/ops"),
+      width: 1440,
+      height: 1800,
+      outputPath: path.join(outputDir, "desktop-ops-authenticated.png"),
+      timeBudget: 12000,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/ops?review=handoff"),
+      width: 390,
+      height: 1280,
+      outputPath: path.join(outputDir, "mobile-ops-authenticated.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/account"),
+      width: 1440,
+      height: 3000,
+      outputPath: path.join(outputDir, "desktop-account-authenticated.png"),
+      timeBudget: 12000,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/account"),
+      width: 390,
+      height: 1720,
+      outputPath: path.join(outputDir, "mobile-account-authenticated.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/admin", "admin"),
+      width: 1440,
+      height: 2100,
+      outputPath: path.join(outputDir, "desktop-admin-authenticated.png"),
+      timeBudget: 12000,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/admin", "admin"),
+      width: 390,
+      height: 1500,
+      outputPath: path.join(outputDir, "mobile-admin-authenticated.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
     });
   } finally {
     server.close();
   }
 }
 
-async function captureScreenshot({ url, width, height, outputPath, timeBudget, mobile = false }) {
+function buildAuthenticatedReviewUrl(baseUrl, targetPath, viewer = "owner") {
+  const reviewUrl = new URL(`${baseUrl}/__visual-review-session`);
+  reviewUrl.searchParams.set("target", targetPath);
+  reviewUrl.searchParams.set("viewer", viewer);
+  return reviewUrl.toString();
+}
+
+function serveVisualReviewSessionRedirect(res, requestUrl, reviewSessions) {
+  const target = requestUrl.searchParams.get("target") || "/app";
+  const viewer = requestUrl.searchParams.get("viewer") || "owner";
+  const cookieHeaders = createAuthCookieHeaders(reviewSessions[viewer] || reviewSessions.owner);
+  res.writeHead(302, {
+    location: target,
+    "set-cookie": cookieHeaders,
+    "cache-control": "no-store"
+  });
+  res.end();
+}
+
+async function captureScreenshot({ url, width, height, outputPath, timeBudget, mobile = false, userDataDir = null, edgePath }) {
+  console.log(`[visual-review] capture:start ${url}`);
+
   const args = [
-    "--headless",
+    "--headless=new",
     "--disable-gpu",
+    "--disable-extensions",
+    "--disable-sync",
+    "--no-first-run",
+    "--no-default-browser-check",
     "--hide-scrollbars",
     `--window-size=${width},${height}`,
     `--virtual-time-budget=${timeBudget}`,
     `--screenshot=${outputPath}`,
     url
   ];
+
+  if (userDataDir) {
+    args.push(`--user-data-dir=${userDataDir}`);
+  }
 
   if (mobile) {
     args.push("--force-device-scale-factor=2");
@@ -108,16 +287,29 @@ async function captureScreenshot({ url, width, height, outputPath, timeBudget, m
   child.stderr.on("data", (chunk) => errors.push(chunk.toString()));
 
   const exitCode = await new Promise((resolve, reject) => {
-    child.on("error", reject);
-    child.on("exit", resolve);
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`Edge screenshot timed out for ${url}`));
+    }, Math.max(timeBudget + 8000, 15000));
+
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
   });
 
   if (exitCode !== 0) {
     throw new Error(`Edge screenshot failed for ${url}: ${errors.join(" ")}`);
   }
+
+  console.log(`[visual-review] capture:done ${outputPath}`);
 }
 
-async function seedReviewData(tempUploadDir, tempDbPath) {
+async function seedReviewData(tempUploadDir, { ownerId, companyId }) {
   await fs.mkdir(tempUploadDir, { recursive: true });
   const photo1 = "review-photo-1.svg";
   const photo2 = "review-photo-2.svg";
@@ -132,7 +324,7 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
     jobCases: [
       {
         id: "jc_demo_1",
-        owner_id: "owner_demo",
+        owner_id: ownerId,
         customer_label: "송파 힐스테이트 1203호",
         contact_memo: "당근 문의 고객",
         site_label: "송파 힐스테이트 1203호",
@@ -141,11 +333,15 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         quote_delta_amount: 70000,
         current_status: "AGREED",
         created_at: plusMin(0),
-        updated_at: plusMin(20)
+        updated_at: plusMin(20),
+        company_id: companyId,
+        created_by_user_id: ownerId,
+        assigned_user_id: ownerId,
+        updated_by_user_id: ownerId
       },
       {
         id: "jc_demo_2",
-        owner_id: "owner_demo",
+        owner_id: ownerId,
         customer_label: "잠실 리센츠 804호",
         contact_memo: "전화 문의",
         site_label: "잠실 리센츠 804호",
@@ -154,29 +350,37 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         quote_delta_amount: 80000,
         current_status: "ON_HOLD",
         created_at: plusMin(2),
-        updated_at: plusMin(18)
+        updated_at: plusMin(18),
+        company_id: companyId,
+        created_by_user_id: ownerId,
+        assigned_user_id: ownerId,
+        updated_by_user_id: ownerId
       }
     ],
     fieldRecords: [
       {
         id: "fr_demo_1",
-        owner_id: "owner_demo",
+        owner_id: ownerId,
         job_case_id: "jc_demo_1",
         primary_reason: "CONTAMINATION",
         secondary_reason: "NICOTINE",
         note: "거실 벽면과 주방 상판 니코틴 오염 심함",
         status: "LINKED",
-        created_at: plusMin(3)
+        created_at: plusMin(3),
+        company_id: companyId,
+        created_by_user_id: ownerId
       },
       {
         id: "fr_demo_2",
-        owner_id: "owner_demo",
+        owner_id: ownerId,
         job_case_id: "jc_demo_1",
         primary_reason: "SPACE_ADDED",
         secondary_reason: "VERANDA_ADDED",
         note: "베란다와 창고 공간 추가 확인",
         status: "LINKED",
-        created_at: plusMin(5)
+        created_at: plusMin(5),
+        company_id: companyId,
+        created_by_user_id: ownerId
       }
     ],
     fieldRecordPhotos: [
@@ -212,7 +416,9 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         tone: "CUSTOMER_MESSAGE",
         body: "현장 확인 결과 송파 힐스테이트 1203호에서 니코틴 오염과 베란다 추가 작업이 확인됐습니다. 추가 작업 항목은 니코틴 오염 제거, 베란다 추가, 창고 추가입니다. 사전 기본 범위를 넘어서는 오염 제거와 공간 추가가 확인돼 별도 시간과 자재가 필요합니다. 기존 견적 250,000원에서 320,000원으로 변경이 필요합니다. 진행 원하시면 확인 부탁드립니다.",
         created_at: plusMin(12),
-        updated_at: plusMin(12)
+        updated_at: plusMin(12),
+        company_id: companyId,
+        created_by_user_id: ownerId
       }
     ],
     agreementRecords: [
@@ -224,7 +430,9 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         confirmed_at: plusMin(15),
         confirmed_amount: 320000,
         customer_response_note: "추가 비용 안내 후 진행 동의",
-        created_at: plusMin(15)
+        created_at: plusMin(15),
+        company_id: companyId,
+        created_by_user_id: ownerId
       },
       {
         id: "ar_demo_2",
@@ -234,7 +442,9 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         confirmed_at: plusMin(16),
         confirmed_amount: null,
         customer_response_note: "배우자와 상의 후 연락 예정",
-        created_at: plusMin(16)
+        created_at: plusMin(16),
+        company_id: companyId,
+        created_by_user_id: ownerId
       }
     ],
     timelineEvents: [
@@ -244,7 +454,9 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         event_type: "FIELD_RECORD_LINKED",
         summary: "니코틴 오염 연결",
         payload_json: { fieldRecordId: "fr_demo_1" },
-        created_at: plusMin(6)
+        created_at: plusMin(6),
+        company_id: companyId,
+        actor_user_id: ownerId
       },
       {
         id: "tl_demo_2",
@@ -252,7 +464,9 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         event_type: "QUOTE_UPDATED",
         summary: "변경 견적 +70000원",
         payload_json: { revisedQuoteAmount: 320000 },
-        created_at: plusMin(10)
+        created_at: plusMin(10),
+        company_id: companyId,
+        actor_user_id: ownerId
       },
       {
         id: "tl_demo_3",
@@ -260,7 +474,9 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         event_type: "DRAFT_CREATED",
         summary: "고객 설명 초안 생성",
         payload_json: { draftId: "draft_demo_1" },
-        created_at: plusMin(12)
+        created_at: plusMin(12),
+        company_id: companyId,
+        actor_user_id: ownerId
       },
       {
         id: "tl_demo_4",
@@ -268,12 +484,14 @@ async function seedReviewData(tempUploadDir, tempDbPath) {
         event_type: "AGREEMENT_RECORDED",
         summary: "카카오톡/문자로 320,000원 합의완료",
         payload_json: { agreementId: "ar_demo_1" },
-        created_at: plusMin(15)
+        created_at: plusMin(15),
+        company_id: companyId,
+        actor_user_id: ownerId
       }
     ]
   };
 
-  await fs.writeFile(tempDbPath, JSON.stringify(db, null, 2), "utf8");
+  await writeDb(db);
 }
 
 function createSvg(background, title, subtitle) {
@@ -291,5 +509,15 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+
+
+
+
+
+
+
+
+
 
 

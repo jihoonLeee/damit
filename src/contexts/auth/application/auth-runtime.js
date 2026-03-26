@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+﻿import crypto from "node:crypto";
 
 import { config } from "../../../config.js";
 import { HttpError } from "../../../http.js";
@@ -19,8 +19,8 @@ export function parseCookies(cookieHeader = "") {
   );
 }
 
-function cookieFlags(maxAgeSeconds = null) {
-  const parts = ["Path=/", "HttpOnly", "SameSite=Lax"];
+function cookieFlags(maxAgeSeconds = null, sameSite = "Lax") {
+  const parts = ["Path=/", "HttpOnly", `SameSite=${sameSite}`];
   if (config.nodeEnv === "production") {
     parts.push("Secure");
   }
@@ -30,19 +30,99 @@ function cookieFlags(maxAgeSeconds = null) {
   return parts;
 }
 
+function getCurrentRequestOrigin(request) {
+  const host = request.headers.host || "";
+  if (!host) {
+    return null;
+  }
+  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || (host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https");
+  return `${protocol}://${host}`;
+}
+
+function normalizeOriginValue(value) {
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+export function getTrustedOriginAllowlist(request) {
+  const allowlist = new Set();
+  const currentOrigin = getCurrentRequestOrigin(request);
+  const configuredOrigins = String(config.trustedOrigins || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  for (const item of configuredOrigins) {
+    const normalized = normalizeOriginValue(item);
+    if (normalized) {
+      allowlist.add(normalized);
+    }
+  }
+
+  if (config.appBaseUrl) {
+    const normalizedBaseUrl = normalizeOriginValue(config.appBaseUrl);
+    if (normalizedBaseUrl) {
+      allowlist.add(normalizedBaseUrl);
+    }
+  }
+
+  if (currentOrigin) {
+    allowlist.add(currentOrigin);
+  }
+
+  return allowlist;
+}
+
+export function extractTrustedRequestOrigin(request) {
+  const rawOrigin = request.headers.origin;
+  if (rawOrigin) {
+    return normalizeOriginValue(String(rawOrigin));
+  }
+
+  const rawReferer = request.headers.referer;
+  if (rawReferer) {
+    return normalizeOriginValue(String(rawReferer));
+  }
+
+  return null;
+}
+
+export function assertTrustedOrigin(request) {
+  if (!config.authEnforceTrustedOrigin) {
+    return;
+  }
+
+  const requestOrigin = extractTrustedRequestOrigin(request);
+  if (!requestOrigin) {
+    throw new HttpError(403, "TRUSTED_ORIGIN_REQUIRED", "운영 모드에서는 동일 출처 요청만 허용됩니다.");
+  }
+
+  const allowlist = getTrustedOriginAllowlist(request);
+  if (!allowlist.has(requestOrigin)) {
+    throw new HttpError(403, "TRUSTED_ORIGIN_INVALID", "허용되지 않은 출처에서 온 요청입니다.");
+  }
+}
+
 export function createAuthCookieHeaders({ sessionId, refreshToken, csrfToken }) {
   return [
-    `${config.sessionCookieName}=${encodeURIComponent(sessionId)}; ${cookieFlags(8 * 60 * 60).join("; ")}`,
-    `${config.refreshCookieName}=${encodeURIComponent(refreshToken)}; ${cookieFlags(30 * 24 * 60 * 60).join("; ")}`,
-    `${config.csrfCookieName}=${encodeURIComponent(csrfToken)}; Path=/; SameSite=Lax${config.nodeEnv === "production" ? "; Secure" : ""}; Max-Age=${8 * 60 * 60}`
+    `${config.sessionCookieName}=${encodeURIComponent(sessionId)}; ${cookieFlags(config.sessionMaxAgeSeconds, config.sessionCookieSameSite).join("; ")}`,
+    `${config.refreshCookieName}=${encodeURIComponent(refreshToken)}; ${cookieFlags(config.refreshSessionMaxAgeSeconds, config.sessionCookieSameSite).join("; ")}`,
+    `${config.csrfCookieName}=${encodeURIComponent(csrfToken)}; Path=/; SameSite=${config.csrfCookieSameSite}${config.nodeEnv === "production" ? "; Secure" : ""}; Max-Age=${config.sessionMaxAgeSeconds}`
   ];
 }
 
 export function createClearAuthCookieHeaders() {
   return [
-    `${config.sessionCookieName}=; ${cookieFlags(0).join("; ")}`,
-    `${config.refreshCookieName}=; ${cookieFlags(0).join("; ")}`,
-    `${config.csrfCookieName}=; Path=/; SameSite=Lax${config.nodeEnv === "production" ? "; Secure" : ""}; Max-Age=0`
+    `${config.sessionCookieName}=; ${cookieFlags(0, config.sessionCookieSameSite).join("; ")}`,
+    `${config.refreshCookieName}=; ${cookieFlags(0, config.sessionCookieSameSite).join("; ")}`,
+    `${config.csrfCookieName}=; Path=/; SameSite=${config.csrfCookieSameSite}${config.nodeEnv === "production" ? "; Secure" : ""}; Max-Age=0`
   ];
 }
 

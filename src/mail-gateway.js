@@ -3,6 +3,44 @@ import fs from "node:fs/promises";
 
 import { config } from "./config.js";
 
+export function maskEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  const [localPart = "", domainPart = ""] = normalized.split("@");
+  if (!localPart || !domainPart) {
+    return normalized;
+  }
+
+  const [domainName = "", ...domainRest] = domainPart.split(".");
+  const maskSegment = (value, visible = 2) => {
+    if (!value) {
+      return "";
+    }
+    if (value.length <= visible) {
+      return `${value[0]}*`;
+    }
+    return `${value.slice(0, visible)}${"*".repeat(Math.max(1, value.length - visible))}`;
+  };
+
+  return `${maskSegment(localPart, 2)}@${[maskSegment(domainName, 1), ...domainRest].filter(Boolean).join(".")}`;
+}
+
+export function isValidMailFrom(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const plainEmail = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+  const namedEmail = /^[^<>]+<[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>$/;
+  return plainEmail.test(normalized) || namedEmail.test(normalized);
+}
+
+export function assertValidMailFrom(value) {
+  if (!isValidMailFrom(value)) {
+    throw new Error("MAIL_FROM must use email@example.com or Name <email@example.com> format.");
+  }
+}
+
 function getBaseUrl(request) {
   if (config.appBaseUrl) {
     return config.appBaseUrl.replace(/\/$/, "");
@@ -27,6 +65,8 @@ async function sendWithFileGateway(message) {
 }
 
 async function sendWithResend(message) {
+  assertValidMailFrom(config.mailFrom);
+
   if (!config.resendApiKey) {
     throw new Error("RESEND_API_KEY is required for Resend delivery.");
   }
@@ -65,8 +105,9 @@ async function sendMessage(message) {
 
   return {
     ...result,
-    debugLink: config.nodeEnv === "production" ? undefined : message.meta?.debugLink,
-    previewPath: result.previewPath
+    debugLink: config.authDebugLinks ? message.meta?.debugLink : undefined,
+    previewPath: config.authDebugLinks ? result.previewPath : undefined,
+    targetMasked: maskEmail(message.to)
   };
 }
 
@@ -97,6 +138,7 @@ export async function sendMagicLinkEmail({ request, email, challengeId, token, i
   return {
     provider: result.provider,
     status: result.status,
+    targetMasked: result.targetMasked,
     debugMagicLink: result.debugLink,
     previewPath: result.previewPath
   };
@@ -126,6 +168,7 @@ export async function sendInvitationEmail({ request, email, role, companyName, i
   return {
     provider: result.provider,
     status: result.status,
+    targetMasked: result.targetMasked,
     debugInvitationLink: result.debugLink,
     previewPath: result.previewPath
   };

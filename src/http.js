@@ -9,16 +9,55 @@ export class HttpError extends Error {
   }
 }
 
-export function json(response, status, data, extraHeaders = {}) {
-  response.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
+const BASE_SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "same-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Content-Security-Policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'"
+};
+
+export function buildStandardHeaders(contentType, extraHeaders = {}) {
+  return {
+    "Content-Type": contentType,
+    ...BASE_SECURITY_HEADERS,
     ...extraHeaders
-  });
+  };
+}
+
+export function buildNoStoreHeaders(extraHeaders = {}) {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+    ...extraHeaders
+  };
+}
+
+export function json(response, status, data, extraHeaders = {}) {
+  response.writeHead(status, buildStandardHeaders("application/json; charset=utf-8", extraHeaders));
   response.end(JSON.stringify(data));
 }
 
+export function jsonNoStore(response, status, data, extraHeaders = {}) {
+  json(response, status, data, buildNoStoreHeaders(extraHeaders));
+}
+
+export function redirect(response, status, location) {
+  response.writeHead(
+    status,
+    buildStandardHeaders(
+      "text/plain; charset=utf-8",
+      buildNoStoreHeaders({
+        Location: location
+      })
+    )
+  );
+  response.end(`Redirecting to ${location}`);
+}
+
 export function notFound(response) {
-  response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+  response.writeHead(404, buildStandardHeaders("application/json; charset=utf-8"));
   response.end(JSON.stringify({
     error: {
       code: "NOT_FOUND",
@@ -64,5 +103,5 @@ export function sendError(response, requestId, error) {
     payload.error.fieldErrors = error.fieldErrors;
   }
 
-  json(response, status, payload);
+  jsonNoStore(response, status, payload);
 }

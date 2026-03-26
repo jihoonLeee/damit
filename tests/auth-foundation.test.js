@@ -23,13 +23,21 @@ config.storageEngine = "SQLITE";
 config.nodeEnv = "development";
 config.mailProvider = "FILE";
 config.appBaseUrl = "";
+config.authDebugLinks = true;
+config.authEnforceTrustedOrigin = false;
+config.sessionCookieSameSite = "Strict";
+config.csrfCookieSameSite = "Strict";
+config.systemAdminEmails = [];
 
 await fs.mkdir(config.publicDir, { recursive: true });
 await fs.writeFile(path.join(config.publicDir, "landing.html"), "<html></html>", "utf8");
+await fs.writeFile(path.join(config.publicDir, "start.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "login.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "home.html"), "<html></html>", "utf8");
+await fs.writeFile(path.join(config.publicDir, "account.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "confirm.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "ops.html"), "<html></html>", "utf8");
+await fs.writeFile(path.join(config.publicDir, "admin.html"), "<html></html>", "utf8");
 await fs.writeFile(path.join(config.publicDir, "index.html"), "<html></html>", "utf8");
 
 const app = createApp();
@@ -50,17 +58,17 @@ function getCookieValue(cookieHeader, name) {
     ?.slice(name.length + 1) || "";
 }
 
-async function issueChallenge(email, extra = {}) {
+async function issueChallenge(email, extra = {}, requestHeaders = {}) {
   const challengeResponse = await fetch(`${baseUrl}/api/v1/auth/challenges`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...requestHeaders },
     body: JSON.stringify({ email, ...extra })
   });
   const payload = await challengeResponse.json();
   return { response: challengeResponse, payload };
 }
 
-async function verifyViaLink(debugMagicLink, extra = {}) {
+async function verifyViaLink(debugMagicLink, extra = {}, requestHeaders = {}) {
   const magicLink = new URL(debugMagicLink);
   const challengeId = magicLink.searchParams.get("challengeId");
   const token = magicLink.searchParams.get("token");
@@ -68,7 +76,7 @@ async function verifyViaLink(debugMagicLink, extra = {}) {
 
   const verifyResponse = await fetch(`${baseUrl}/api/v1/auth/verify`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...requestHeaders },
     body: JSON.stringify({
       challengeId,
       token,
@@ -89,6 +97,16 @@ function backdateChallenges(email) {
   database.close();
 }
 
+function backdateInvitation(invitationId, minutes = 2) {
+  const database = new DatabaseSync(config.dbFilePath);
+  database.prepare("UPDATE invitations SET last_sent_at = ?, created_at = ? WHERE id = ?").run(
+    new Date(Date.now() - minutes * 60 * 1000).toISOString(),
+    new Date(Date.now() - minutes * 60 * 1000).toISOString(),
+    invitationId
+  );
+  database.close();
+}
+
 test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
@@ -97,6 +115,9 @@ test("auth challenge returns a dev magic link and requires company setup on firs
   const { response, payload } = await issueChallenge("owner@example.com");
   assert.equal(response.status, 201);
   assert.equal(typeof payload.challengeId, "string");
+  assert.equal(payload.delivery.provider, "FILE");
+  assert.equal(payload.delivery.status, "SENT");
+  assert.match(payload.delivery.targetMasked, /@/);
   assert.match(payload.debugMagicLink, /challengeId=/);
 
   const firstVerify = await verifyViaLink(payload.debugMagicLink);
@@ -139,11 +160,14 @@ test("auth refresh rotates refresh cookie and preserves company context", async 
   });
   const cookieHeader = readCookiesFromResponse(verify.response);
   const previousRefresh = getCookieValue(cookieHeader, config.refreshCookieName);
+  const previousSession = getCookieValue(cookieHeader, config.sessionCookieName);
+  const csrfToken = getCookieValue(cookieHeader, config.csrfCookieName);
 
   const refreshResponse = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
     method: "POST",
     headers: {
-      Cookie: cookieHeader
+      Cookie: cookieHeader,
+      "x-csrf-token": csrfToken
     }
   });
   assert.equal(refreshResponse.status, 200);
@@ -152,7 +176,42 @@ test("auth refresh rotates refresh cookie and preserves company context", async 
 
   const refreshedCookieHeader = readCookiesFromResponse(refreshResponse);
   const nextRefresh = getCookieValue(refreshedCookieHeader, config.refreshCookieName);
+  const nextSession = getCookieValue(refreshedCookieHeader, config.sessionCookieName);
   assert.notEqual(previousRefresh, nextRefresh);
+  assert.notEqual(previousSession, nextSession);
+});
+
+test("auth refresh requires csrf token", async () => {
+  const challenge = await issueChallenge("csrf@example.com");
+  const verify = await verifyViaLink(challenge.payload.debugMagicLink, {
+    displayName: "CSRF ???",
+    companyName: "CSRF ??"
+  });
+  const cookieHeader = readCookiesFromResponse(verify.response);
+
+  const refreshResponse = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
+    method: "POST",
+    headers: {
+      Cookie: cookieHeader
+    }
+  });
+  assert.equal(refreshResponse.status, 403);
+  const refreshPayload = await refreshResponse.json();
+  assert.equal(refreshPayload.error.code, "CSRF_TOKEN_INVALID");
+});
+
+test("auth challenge hides debug link when debug mode is disabled", async () => {
+  config.authDebugLinks = false;
+  try {
+    const { response, payload } = await issueChallenge("prodmode@example.com");
+    assert.equal(response.status, 201);
+    assert.equal(payload.debugMagicLink, undefined);
+    assert.equal(payload.delivery.provider, "FILE");
+    assert.equal(payload.delivery.status, "SENT");
+    assert.match(payload.delivery.targetMasked, /@/);
+  } finally {
+    config.authDebugLinks = true;
+  }
 });
 
 test("owner can invite a user, invited user joins second company, and switches context", async () => {
@@ -250,15 +309,343 @@ test("owner can invite a user, invited user joins second company, and switches c
   assert.equal(membershipsPayload.items.length, 1);
 });
 
-test("static entry routes are served for landing, login, home, ops, and app", async () => {
+test("account overview returns company, memberships, invitations, and security summary", async () => {
+  const ownerChallenge = await issueChallenge("account-owner@example.com");
+  const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {
+    displayName: "계정 오너",
+    companyName: "계정 테스트 클린"
+  });
+  const ownerCookie = readCookiesFromResponse(ownerVerify.response);
+  const ownerCsrf = getCookieValue(ownerCookie, config.csrfCookieName);
+  const companyId = ownerVerify.payload.company.id;
+
+  const inviteResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+      "x-csrf-token": ownerCsrf
+    },
+    body: JSON.stringify({
+      email: "staff@example.com",
+      role: "STAFF"
+    })
+  });
+  assert.equal(inviteResponse.status, 201);
+
+  const accountResponse = await fetch(`${baseUrl}/api/v1/account/overview`, {
+    headers: {
+      Cookie: ownerCookie
+    }
+  });
+  assert.equal(accountResponse.status, 200);
+  const accountPayload = await accountResponse.json();
+  assert.equal(accountPayload.user.displayName, "계정 오너");
+  assert.equal(accountPayload.company.name, "계정 테스트 클린");
+  assert.equal(accountPayload.memberships.length, 1);
+  assert.equal(accountPayload.invitations.length, 1);
+  assert.equal(accountPayload.recentLoginActivity.length >= 1, true);
+  assert.equal(accountPayload.recentLoginActivity[0].email, "account-owner@example.com");
+  assert.equal(Array.isArray(accountPayload.recentAccountActivity), true);
+  assert.equal(accountPayload.user.phoneNumber, null);
+  assert.equal(accountPayload.security.mailProvider, "FILE");
+  assert.equal(accountPayload.internalAccess.systemAdmin, false);
+});
+
+test("account profile can update display name and phone number", async () => {
+  const ownerChallenge = await issueChallenge("profile-owner@example.com");
+  const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {
+    displayName: "초기 이름",
+    companyName: "프로필 테스트 클린"
+  });
+  const ownerCookie = readCookiesFromResponse(ownerVerify.response);
+  const ownerCsrf = getCookieValue(ownerCookie, config.csrfCookieName);
+
+  const updateResponse = await fetch(`${baseUrl}/api/v1/account/profile`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+      "x-csrf-token": ownerCsrf
+    },
+    body: JSON.stringify({
+      displayName: "변경된 이름",
+      phoneNumber: "010-1234-5678"
+    })
+  });
+  assert.equal(updateResponse.status, 200);
+  const updatePayload = await updateResponse.json();
+  assert.equal(updatePayload.user.displayName, "변경된 이름");
+  assert.equal(updatePayload.user.phoneNumber, "010-1234-5678");
+
+  const accountResponse = await fetch(`${baseUrl}/api/v1/account/overview`, {
+    headers: {
+      Cookie: ownerCookie
+    }
+  });
+  assert.equal(accountResponse.status, 200);
+  const accountPayload = await accountResponse.json();
+  assert.equal(accountPayload.user.displayName, "변경된 이름");
+  assert.equal(accountPayload.user.phoneNumber, "010-1234-5678");
+});
+
+test("account overview exposes sessions and can revoke another owned session", async () => {
+  const ownerChallenge = await issueChallenge("session-owner@example.com");
+  const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {
+    displayName: "세션 오너",
+    companyName: "세션 테스트 클린"
+  });
+
+  backdateChallenges("session-owner@example.com");
+  const secondChallenge = await issueChallenge("session-owner@example.com");
+  const secondVerify = await verifyViaLink(secondChallenge.payload.debugMagicLink);
+  const secondCookie = readCookiesFromResponse(secondVerify.response);
+  const secondCsrf = getCookieValue(secondCookie, config.csrfCookieName);
+
+  const accountResponse = await fetch(`${baseUrl}/api/v1/account/overview`, {
+    headers: {
+      Cookie: secondCookie
+    }
+  });
+  assert.equal(accountResponse.status, 200);
+  const accountPayload = await accountResponse.json();
+  assert.equal(accountPayload.sessions.length, 2);
+  assert.equal(accountPayload.sessions.filter((item) => item.isCurrent).length, 1);
+
+  const otherSession = accountPayload.sessions.find((item) => !item.isCurrent);
+  assert.ok(otherSession);
+
+  const revokeResponse = await fetch(`${baseUrl}/api/v1/account/sessions/${otherSession.id}/revoke`, {
+    method: "POST",
+    headers: {
+      Cookie: secondCookie,
+      "x-csrf-token": secondCsrf
+    }
+  });
+  assert.equal(revokeResponse.status, 200);
+  const revokePayload = await revokeResponse.json();
+  assert.equal(revokePayload.session.id, otherSession.id);
+
+  const afterResponse = await fetch(`${baseUrl}/api/v1/account/overview`, {
+    headers: {
+      Cookie: secondCookie
+    }
+  });
+  assert.equal(afterResponse.status, 200);
+  const afterPayload = await afterResponse.json();
+  const revokedSession = afterPayload.sessions.find((item) => item.id === otherSession.id);
+  assert.ok(revokedSession.revokedAt);
+});
+
+test("owner can reissue and revoke invitations from the same company", async () => {
+  const ownerChallenge = await issueChallenge("owner-actions@example.com");
+  const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {
+    displayName: "초대 관리자",
+    companyName: "초대 액션 클린"
+  });
+  const ownerCookie = readCookiesFromResponse(ownerVerify.response);
+  const ownerCsrf = getCookieValue(ownerCookie, config.csrfCookieName);
+  const companyId = ownerVerify.payload.company.id;
+
+  const inviteResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+      "x-csrf-token": ownerCsrf
+    },
+    body: JSON.stringify({
+      email: "crew@example.com",
+      role: "STAFF"
+    })
+  });
+  assert.equal(inviteResponse.status, 201);
+  const invitePayload = await inviteResponse.json();
+
+  const inviteListResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+    headers: {
+      Cookie: ownerCookie
+    }
+  });
+  assert.equal(inviteListResponse.status, 200);
+  const inviteListPayload = await inviteListResponse.json();
+  assert.equal(inviteListPayload.items.length, 1);
+  backdateInvitation(inviteListPayload.items[0].id);
+
+  const reissueResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations/${inviteListPayload.items[0].id}/reissue`, {
+    method: "POST",
+    headers: {
+      Cookie: ownerCookie,
+      "x-csrf-token": ownerCsrf
+    }
+  });
+  assert.equal(reissueResponse.status, 200);
+  const reissuePayload = await reissueResponse.json();
+  assert.equal(reissuePayload.email, "crew@example.com");
+  assert.match(reissuePayload.debugInvitationLink, /invitationToken=/);
+
+  const inviteListAfterReissueResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+    headers: {
+      Cookie: ownerCookie
+    }
+  });
+  assert.equal(inviteListAfterReissueResponse.status, 200);
+  const inviteListAfterReissue = await inviteListAfterReissueResponse.json();
+  assert.equal(inviteListAfterReissue.items.length, 2);
+  assert.equal(inviteListAfterReissue.items[0].status, "ISSUED");
+  assert.equal(inviteListAfterReissue.items[1].status, "REVOKED");
+
+  const revokeResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations/${inviteListAfterReissue.items[0].id}/revoke`, {
+    method: "POST",
+    headers: {
+      Cookie: ownerCookie,
+      "x-csrf-token": ownerCsrf
+    }
+  });
+  assert.equal(revokeResponse.status, 200);
+  const revokePayload = await revokeResponse.json();
+  assert.equal(revokePayload.item.status, "REVOKED");
+
+  const inviteListAfterRevokeResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+    headers: {
+      Cookie: ownerCookie
+    }
+  });
+  const inviteListAfterRevoke = await inviteListAfterRevokeResponse.json();
+  assert.equal(inviteListAfterRevoke.items[0].status, "REVOKED");
+});
+
+test("system admin overview requires allowlisted email and returns global snapshot when authorized", async () => {
+  const previousEmails = [...config.systemAdminEmails];
+  try {
+    const blockedChallenge = await issueChallenge("regular-owner@example.com");
+    const blockedVerify = await verifyViaLink(blockedChallenge.payload.debugMagicLink, {
+      displayName: "일반 오너",
+      companyName: "일반 업체"
+    });
+    const blockedCookie = readCookiesFromResponse(blockedVerify.response);
+    const blockedOverview = await fetch(`${baseUrl}/api/v1/system-admin/overview`, {
+      headers: {
+        Cookie: blockedCookie
+      }
+    });
+    assert.equal(blockedOverview.status, 403);
+    const blockedPayload = await blockedOverview.json();
+    assert.equal(blockedPayload.error.code, "SYSTEM_ADMIN_REQUIRED");
+
+    config.systemAdminEmails = ["admin@example.com"];
+    const adminChallenge = await issueChallenge("admin@example.com");
+    const adminVerify = await verifyViaLink(adminChallenge.payload.debugMagicLink, {
+      displayName: "시스템 관리자",
+      companyName: "내부 운영"
+    });
+    const adminCookie = readCookiesFromResponse(adminVerify.response);
+
+    const overviewResponse = await fetch(`${baseUrl}/api/v1/system-admin/overview`, {
+      headers: {
+        Cookie: adminCookie
+      }
+    });
+    assert.equal(overviewResponse.status, 200);
+    const overviewPayload = await overviewResponse.json();
+    assert.equal(overviewPayload.viewer.email, "admin@example.com");
+    assert.equal(overviewPayload.snapshot.storage.storageEngine, "SQLITE");
+
+    const explorerResponse = await fetch(`${baseUrl}/api/v1/system-admin/data-explorer?dataset=companies&limit=5`, {
+      headers: {
+        Cookie: adminCookie
+      }
+    });
+    assert.equal(explorerResponse.status, 200);
+    const explorerPayload = await explorerResponse.json();
+    assert.equal(explorerPayload.viewer.email, "admin@example.com");
+    assert.equal(explorerPayload.selected.key, "companies");
+
+    const exportResponse = await fetch(`${baseUrl}/api/v1/system-admin/data-explorer/export?dataset=companies&limit=5`, {
+      headers: {
+        Cookie: adminCookie
+      }
+    });
+    assert.equal(exportResponse.status, 200);
+    assert.match(exportResponse.headers.get("content-disposition") || "", /attachment/);
+    const exportPayload = await exportResponse.json();
+    assert.equal(exportPayload.viewer.email, "admin@example.com");
+    assert.equal(exportPayload.dataset, "companies");
+    assert.equal(exportPayload.selected.key, "companies");
+  } finally {
+    config.systemAdminEmails = previousEmails;
+  }
+});
+
+test("static entry routes are served for landing, start, login, home, account, ops, admin, and app", async () => {
   const landing = await fetch(`${baseUrl}/`);
+  const start = await fetch(`${baseUrl}/start`);
   const login = await fetch(`${baseUrl}/login`);
   const home = await fetch(`${baseUrl}/home`);
+  const account = await fetch(`${baseUrl}/account`);
   const opsPage = await fetch(`${baseUrl}/ops`);
+  const adminPage = await fetch(`${baseUrl}/admin`);
   const appPage = await fetch(`${baseUrl}/app`);
   assert.equal(landing.status, 200);
+  assert.equal(start.status, 200);
   assert.equal(login.status, 200);
   assert.equal(home.status, 200);
+  assert.equal(account.status, 200);
   assert.equal(opsPage.status, 200);
+  assert.equal(adminPage.status, 200);
   assert.equal(appPage.status, 200);
+});
+
+
+test("auth challenge responses are non-cacheable and carry baseline security headers", async () => {
+  const { response } = await issueChallenge("headers@example.com");
+  assert.equal(response.status, 201);
+  assert.match(response.headers.get("cache-control") || "", /no-store/);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.match(response.headers.get("content-security-policy") || "", /default-src 'self'/);
+});
+
+test("trusted origin enforcement blocks missing origin and allows same-origin auth requests", async () => {
+  config.authEnforceTrustedOrigin = true;
+  try {
+    const blocked = await issueChallenge("origin-blocked@example.com");
+    assert.equal(blocked.response.status, 403);
+    assert.equal(blocked.payload.error.code, "TRUSTED_ORIGIN_REQUIRED");
+
+    const allowed = await issueChallenge("origin-allowed@example.com", {}, { Origin: baseUrl });
+    assert.equal(allowed.response.status, 201);
+  } finally {
+    config.authEnforceTrustedOrigin = false;
+  }
+});
+
+test("logout requires csrf token before clearing cookies", async () => {
+  const challenge = await issueChallenge("logout@example.com");
+  const verify = await verifyViaLink(challenge.payload.debugMagicLink, {
+    displayName: "???? ???",
+    companyName: "?? ???"
+  });
+  const cookieHeader = readCookiesFromResponse(verify.response);
+  const csrfToken = getCookieValue(cookieHeader, config.csrfCookieName);
+
+  const blocked = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+    method: "POST",
+    headers: { Cookie: cookieHeader }
+  });
+  const blockedPayload = await blocked.json();
+  assert.equal(blocked.status, 403);
+  assert.equal(blockedPayload.error.code, "CSRF_TOKEN_INVALID");
+
+  const logoutResponse = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+    method: "POST",
+    headers: {
+      Cookie: cookieHeader,
+      "x-csrf-token": csrfToken
+    }
+  });
+  const logoutPayload = await logoutResponse.json();
+  assert.equal(logoutResponse.status, 200);
+  assert.equal(logoutPayload.ok, true);
+  assert.match(logoutResponse.headers.get("cache-control") || "", /no-store/);
 });

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>다밋 마이페이지</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/logos/damit_icon_exact.svg" />
+</head>
+<body class="ops-body account-body">
+  <div class="ops-shell account-shell">
+    <header class="ops-hero">
+      <div>
+        <div class="brand-lockup compact ops-brand-lockup">
+          <img class="brand-lockup-image compact" src="/logos/damit_default_exact.svg" alt="DAMIT 로고" />
+        </div>
+        <h1>사장님 마이페이지</h1>
+        <p class="ops-copy">내 정보, 현재 회사, 팀 초대, 로그인 세션, 계정 보안 상태를 한 화면에서 확인하고 정리하는 운영 계정 화면입니다.</p>
+      </div>
+      <div class="ops-actions-top">
+        <a class="ghost-button" href="/home">운영 홈</a>
+        <a class="ghost-button" href="/app">작업 화면</a>
+        <a class="ghost-button" href="/ops">운영 콘솔</a>
+      </div>
+    </header>
+
+    <section id="account-return-banner" class="auth-return-banner hidden"></section>
+
+    <section class="ops-verdict-panel">
+      <div class="ops-verdict-topline">
+        <span id="account-role-badge" class="ops-badge tone-neutral">불러오는 중</span>
+        <span id="account-email" class="ops-timestamp">계정 정보를 불러오는 중입니다.</span>
+      </div>
+      <div class="ops-verdict-copyblock">
+        <h2 id="account-summary-title">계정 상태를 확인하는 중입니다.</h2>
+        <p id="account-summary-copy">현재 회사 컨텍스트와 세션 보안 상태를 먼저 정리한 뒤, 필요한 액션을 아래에서 이어서 처리할 수 있습니다.</p>
+      </div>
+      <div id="account-attention-list" class="account-attention-list hidden" aria-live="polite"></div>
+    </section>
+
+    <section class="ops-grid ops-grid-4 account-signal-grid">
+      <article class="ops-card ops-card-emphasis">
+        <span class="ops-card-label">현재 회사</span>
+        <strong id="account-company-name">확인 중</strong>
+        <p id="account-company-meta" class="helper-text">현재 세션과 연결된 회사와 역할을 요약합니다.</p>
+      </article>
+      <article class="ops-card">
+        <span class="ops-card-label">보안 상태</span>
+        <strong id="account-security-status">확인 중</strong>
+        <p id="account-security-meta" class="helper-text">로그인 링크와 세션 보안 준비도를 요약합니다.</p>
+      </article>
+      <article class="ops-card">
+        <span class="ops-card-label">최근 로그인 링크</span>
+        <strong id="account-login-signal">확인 중</strong>
+        <p id="account-login-signal-copy" class="helper-text">최근 로그인 링크 전달 상태를 요약합니다.</p>
+      </article>
+      <article class="ops-card">
+        <span class="ops-card-label">내부 권한</span>
+        <strong id="account-internal-status">확인 중</strong>
+        <p id="account-internal-meta" class="helper-text">시스템 관리자 화면 접근 가능 여부를 알려줍니다.</p>
+      </article>
+    </section>
+
+    <section class="ops-layout ops-layout-wide">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Profile</p>
+            <h2>내 계정 정보</h2>
+          </div>
+        </div>
+        <div id="account-profile-card" class="landing-card large">
+          <strong>계정 정보를 불러오는 중입니다.</strong>
+          <p>현재 세션에 연결된 기본 프로필 정보를 확인하고 있습니다.</p>
+        </div>
+        <form id="account-profile-form" class="account-profile-form">
+          <label class="field">
+            <span>표시 이름</span>
+            <input id="account-profile-display-name" type="text" autocomplete="name" placeholder="예: 김지훈" />
+          </label>
+          <label class="field">
+            <span>연락처</span>
+            <input id="account-profile-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="010-1234-5678" />
+          </label>
+          <div class="account-profile-actions">
+            <button id="account-profile-submit" type="submit" class="primary-button">프로필 저장</button>
+          </div>
+        </form>
+        <div id="account-profile-feedback" class="feedback" aria-live="polite"></div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Company Context</p>
+            <h2>현재 회사 전환</h2>
+          </div>
+        </div>
+        <label class="field">
+          <span>회사 전환</span>
+          <select id="account-company-switcher"></select>
+        </label>
+        <button id="account-switch-button" type="button" class="secondary-button">활성 회사 바꾸기</button>
+        <p id="account-company-note" class="helper-text">회사 전환 후에는 작업 화면과 운영 콘솔도 같은 컨텍스트를 기준으로 다시 보게 됩니다.</p>
+      </section>
+    </section>
+
+    <section class="ops-layout ops-layout-wide">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Memberships</p>
+            <h2>회사 멤버 구성</h2>
+          </div>
+        </div>
+        <div id="account-memberships" class="home-list empty-state">멤버 구성을 불러오는 중입니다.</div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Owner Only</p>
+            <h2>팀 초대와 대기 상태</h2>
+          </div>
+        </div>
+        <div id="account-invite-panel" class="account-invite-panel hidden">
+          <p id="account-invite-copy" class="helper-text">OWNER 권한에서는 여기에서 바로 팀원을 초대하고 현재 초대 상태를 확인할 수 있습니다.</p>
+          <form id="account-invite-form" class="account-invite-form">
+            <label class="field">
+              <span>초대 이메일</span>
+              <input id="account-invite-email" type="email" inputmode="email" autocomplete="email" placeholder="manager@example.com" />
+            </label>
+            <label class="field">
+              <span>초대 역할</span>
+              <select id="account-invite-role">
+                <option value="MANAGER">MANAGER</option>
+                <option value="STAFF">STAFF</option>
+              </select>
+            </label>
+            <div class="account-invite-actions">
+              <button id="account-invite-submit" type="submit" class="primary-button">초대 메일 보내기</button>
+            </div>
+          </form>
+          <div id="account-invite-feedback" class="feedback" aria-live="polite"></div>
+          <div id="account-invite-result" class="auth-debug hidden" aria-live="polite"></div>
+        </div>
+        <div id="account-invitations" class="home-list empty-state">초대 상태를 불러오는 중입니다.</div>
+        <details id="account-invitation-history-block" class="account-history-block hidden">
+          <summary class="account-history-summary">
+            <strong>닫힌 초대 기록</strong>
+            <span id="account-invitation-history-copy" class="helper-text">응답 완료 또는 취소된 초대를 기록으로 확인할 수 있습니다.</span>
+          </summary>
+          <div id="account-invitation-history" class="home-list empty-state">닫힌 초대 기록을 불러오는 중입니다.</div>
+        </details>
+      </section>
+    </section>
+
+    <section class="ops-layout ops-layout-wide">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Session Security</p>
+            <h2>내 로그인 세션</h2>
+          </div>
+        </div>
+        <p id="account-sessions-copy" class="helper-text">현재 세션은 그대로 유지하고, 다른 활성 세션만 여기에서 정리할 수 있습니다.</p>
+        <div id="account-session-summary" class="account-session-summary">
+          <article class="account-session-stat">
+            <span>현재 세션</span>
+            <strong id="account-session-current-count">0</strong>
+            <p id="account-session-current-copy">불러오는 중입니다.</p>
+          </article>
+          <article class="account-session-stat">
+            <span>다른 활성 세션</span>
+            <strong id="account-session-other-count">0</strong>
+            <p id="account-session-other-copy">불러오는 중입니다.</p>
+          </article>
+          <article class="account-session-stat">
+            <span>최근 종료 세션</span>
+            <strong id="account-session-ended-count">0</strong>
+            <p id="account-session-ended-copy">불러오는 중입니다.</p>
+          </article>
+        </div>
+        <div class="account-session-layout">
+          <section class="account-session-column">
+            <div class="account-subsection-header">
+              <strong>현재 세션</strong>
+              <span class="helper-text">이 브라우저에서 사용 중</span>
+            </div>
+            <div id="account-current-session" class="home-list empty-state">현재 세션을 불러오는 중입니다.</div>
+          </section>
+          <section class="account-session-column">
+            <div class="account-subsection-header">
+              <strong>다른 활성 세션</strong>
+              <span class="helper-text">필요 없으면 종료 가능</span>
+            </div>
+            <div id="account-other-sessions" class="home-list empty-state">다른 활성 세션을 불러오는 중입니다.</div>
+          </section>
+        </div>
+        <details id="account-ended-sessions-block" class="account-history-block hidden">
+          <summary class="account-history-summary">
+            <strong>최근 종료 세션</strong>
+            <span id="account-ended-sessions-summary-copy" class="helper-text">만료되었거나 직접 종료된 세션을 기록으로 확인합니다.</span>
+          </summary>
+          <div id="account-ended-sessions" class="home-list empty-state">종료된 세션을 불러오는 중입니다.</div>
+        </details>
+        <div id="account-sessions-feedback" class="feedback" aria-live="polite"></div>
+      </section>
+    </section>
+
+    <section class="ops-layout ops-layout-wide">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Recent Login Activity</p>
+            <h2>최근 로그인 링크 활동</h2>
+          </div>
+        </div>
+        <div id="account-login-activity" class="home-list empty-state">최근 로그인 링크 활동을 불러오는 중입니다.</div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Recent Account Activity</p>
+            <h2>내 최근 계정 액션</h2>
+          </div>
+        </div>
+        <div id="account-activity-feed" class="home-list empty-state">최근 계정 액션을 불러오는 중입니다.</div>
+      </section>
+    </section>
+
+    <section class="ops-layout ops-layout-wide">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Security Posture</p>
+            <h2>로그인과 세션 보안 준비도</h2>
+          </div>
+        </div>
+        <dl id="account-security-list" class="ops-definition-list">
+          <div><dt>원본 출처 검증</dt><dd>확인 중</dd></div>
+        </dl>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Where To Go</p>
+            <h2>다음에 어디로 가면 되는지</h2>
+          </div>
+        </div>
+        <div class="home-route-grid account-route-grid">
+          <article class="home-route-card is-primary-route">
+            <div class="home-route-topline">
+              <span class="status-badge EXPLAINED">주요 작업 화면</span>
+            </div>
+            <strong>작업 워크스페이스</strong>
+            <p>현장 기록, 견적 변경, 설명 초안, 고객 확인, 합의 기록을 실제로 처리하는 메인 화면입니다.</p>
+            <a class="primary-button landing-action" href="/app">작업 화면 열기</a>
+          </article>
+          <article class="home-route-card is-secondary-route">
+            <div class="home-route-topline">
+              <span class="status-badge neutral">운영 확인</span>
+            </div>
+            <strong>운영 콘솔</strong>
+            <p>서비스 상태, 백업, 최근 활동, 운영 경고를 읽는 owner 전용 화면입니다.</p>
+            <a class="ghost-button landing-action" href="/ops">운영 콘솔 보기</a>
+          </article>
+          <article class="home-route-card is-muted hidden" id="account-admin-card">
+            <div class="home-route-topline">
+              <span class="status-badge neutral">내부 전용</span>
+            </div>
+            <strong>시스템 관리자</strong>
+            <p>여러 회사와 로그인 흐름을 전역으로 읽기 전용으로 확인하는 내부 관리자 화면입니다.</p>
+            <a class="ghost-button landing-action" href="/admin">관리자 화면 보기</a>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <div class="landing-actions">
+      <a class="primary-button landing-action action-emphasis" href="/app">작업 워크스페이스</a>
+      <a class="ghost-button landing-action" href="/home">운영 홈</a>
+      <a class="ghost-button landing-action" href="/ops">운영 콘솔</a>
+      <a class="ghost-button landing-action hidden" href="/admin" id="account-admin-link">시스템 관리자</a>
+      <button id="account-logout-button" class="ghost-button landing-action" type="button">로그아웃</button>
+    </div>
+    <div id="account-feedback" class="feedback" aria-live="polite"></div>
+  </div>
+  <script type="module" src="/account.js"></script>
+</body>
+</html>

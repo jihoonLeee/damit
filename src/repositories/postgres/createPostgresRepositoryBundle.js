@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+﻿import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -33,6 +33,566 @@ function normalizeRow(row) {
 
 function normalizeRows(rows = []) {
   return rows.map((row) => normalizeRow(row));
+}
+
+function normalizeProfileDisplayName(value, fallbackEmail = '') {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    throw new HttpError(422, 'PROFILE_DISPLAY_NAME_REQUIRED', '표시 이름을 입력해주세요.');
+  }
+  if (normalized.length > 60) {
+    throw new HttpError(422, 'PROFILE_DISPLAY_NAME_TOO_LONG', '표시 이름은 60자 이내로 입력해주세요.');
+  }
+  return normalized || String(fallbackEmail || '').split('@')[0];
+}
+
+function normalizeProfilePhoneNumber(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length > 30) {
+    throw new HttpError(422, 'PROFILE_PHONE_TOO_LONG', '연락처는 30자 이내로 입력해주세요.');
+  }
+  return normalized;
+}
+
+function mapInvitationRow(item) {
+  return {
+    id: item.id,
+    email: item.email,
+    role: item.role,
+    status: item.status,
+    expiresAt: item.expires_at,
+    acceptedAt: item.accepted_at,
+    lastSentAt: item.last_sent_at,
+    createdAt: item.created_at
+  };
+}
+
+function pickOpsValue(item, keys) {
+  for (const key of keys) {
+    if (item && item[key] != null) {
+      return item[key];
+    }
+  }
+  return null;
+}
+
+function sortOpsRowsDesc(items, keys) {
+  return [...items].sort((left, right) => {
+    const leftValue = pickOpsValue(left, keys);
+    const rightValue = pickOpsValue(right, keys);
+    return String(leftValue || '') < String(rightValue || '') ? 1 : -1;
+  });
+}
+
+function isWithinOpsHours(value, hours) {
+  if (!value) {
+    return false;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  return Date.now() - date.getTime() <= hours * 60 * 60 * 1000;
+}
+
+function isPastOpsTimestamp(value) {
+  if (!value) {
+    return false;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  return date.getTime() < Date.now();
+}
+
+function maskOpsEmailAddress(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const [localPart, domain = ""] = normalized.split("@");
+  if (!localPart || !domain) {
+    return normalized || "-";
+  }
+
+  const visiblePrefix = localPart.slice(0, Math.min(localPart.length, 2));
+  const hidden = "*".repeat(Math.max(localPart.length - visiblePrefix.length, 1));
+  return `${visiblePrefix}${hidden}@${domain}`;
+}
+
+function summarizeOpsTokens(items, tokenKey, limit = 3) {
+  const counts = new Map();
+  for (const item of items) {
+    const token = pickOpsValue(item, [tokenKey]) || 'UNKNOWN';
+    counts.set(token, (counts.get(token) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, limit)
+    .map(([token, count]) => ({ token, count }));
+}
+
+function buildPostgresOpsSignals({ agreementRecords, customerConfirmationLinks, timelineEvents, loginChallenges, sessions }) {
+  const sortedAgreements = sortOpsRowsDesc(agreementRecords || [], ['confirmed_at', 'created_at']);
+  const latestAgreement = sortedAgreements[0] || null;
+  const agreementStatuses = summarizeOpsTokens(agreementRecords || [], 'status');
+  const recentAgreementCount7d = (agreementRecords || []).filter((item) => isWithinOpsHours(pickOpsValue(item, ['confirmed_at', 'created_at']), 24 * 7)).length;
+
+  const sortedConfirmations = sortOpsRowsDesc(customerConfirmationLinks || [], ['updated_at', 'confirmed_at', 'viewed_at', 'created_at']);
+  const latestConfirmation = sortedConfirmations[0] || null;
+  const openConfirmations = (customerConfirmationLinks || []).filter((item) => ['ISSUED', 'VIEWED'].includes(item.status));
+  const staleOpenConfirmations = openConfirmations.filter((item) => !isWithinOpsHours(pickOpsValue(item, ['updated_at', 'created_at']), 24));
+  const recentConfirmedLinks7d = (customerConfirmationLinks || []).filter((item) => item.status === 'CONFIRMED' && isWithinOpsHours(pickOpsValue(item, ['confirmed_at', 'updated_at']), 24 * 7)).length;
+
+  const sortedTimeline = sortOpsRowsDesc(timelineEvents || [], ['created_at']);
+  const latestTimeline = sortedTimeline[0] || null;
+  const recentTimelineCount24h = (timelineEvents || []).filter((item) => isWithinOpsHours(pickOpsValue(item, ['created_at']), 24)).length;
+  const timelineEventMix = summarizeOpsTokens(timelineEvents || [], 'event_type');
+
+  const sortedChallenges = sortOpsRowsDesc(loginChallenges || [], ['created_at']);
+  const latestChallenge = sortedChallenges[0] || null;
+  const recentChallengeCount24h = (loginChallenges || []).filter((item) => isWithinOpsHours(pickOpsValue(item, ['created_at']), 24)).length;
+  const failedDeliveryCount24h = (loginChallenges || []).filter((item) => item.delivery_status === 'FAILED' && isWithinOpsHours(pickOpsValue(item, ['created_at']), 24)).length;
+  const deliveryStatusMix = summarizeOpsTokens(loginChallenges || [], 'delivery_status');
+
+  const activeSessions = (sessions || []).filter((item) => !item.revoked_at && !isPastOpsTimestamp(item.expires_at));
+  const idleRiskSessions = activeSessions.filter((item) => {
+    const lastSeenAt = pickOpsValue(item, ['last_seen_at', 'created_at']);
+    if (!lastSeenAt) {
+      return false;
+    }
+    const ageMs = Date.now() - new Date(lastSeenAt).getTime();
+    return ageMs > Math.max(config.sessionIdleTimeoutSeconds * 1000 * 0.5, 60 * 60 * 1000);
+  });
+  const latestSession = sortOpsRowsDesc(activeSessions, ['last_seen_at', 'created_at'])[0] || null;
+
+  return {
+    agreements: {
+      totalCount: agreementRecords?.length || 0,
+      recentCount7d: recentAgreementCount7d,
+      latestStatus: latestAgreement?.status || null,
+      latestConfirmedAt: pickOpsValue(latestAgreement, ['confirmed_at', 'created_at']),
+      topStatuses: agreementStatuses
+    },
+    customerConfirmations: {
+      totalCount: customerConfirmationLinks?.length || 0,
+      openCount: openConfirmations.length,
+      staleOpenCount: staleOpenConfirmations.length,
+      recentConfirmedCount7d: recentConfirmedLinks7d,
+      latestStatus: latestConfirmation?.status || null,
+      latestUpdatedAt: pickOpsValue(latestConfirmation, ['updated_at', 'confirmed_at', 'viewed_at', 'created_at'])
+    },
+    timeline: {
+      totalCount: timelineEvents?.length || 0,
+      recentCount24h: recentTimelineCount24h,
+      latestEventType: latestTimeline?.event_type || null,
+      latestEventAt: pickOpsValue(latestTimeline, ['created_at']),
+      topEventTypes: timelineEventMix
+    },
+    auth: {
+      challengeTotalCount: loginChallenges?.length || 0,
+      recentChallengeCount24h,
+      latestDeliveryStatus: latestChallenge?.delivery_status || null,
+      latestChallengeAt: pickOpsValue(latestChallenge, ['created_at']),
+      failedDeliveryCount24h,
+      topDeliveryStatuses: deliveryStatusMix,
+      activeSessionCount: activeSessions.length,
+      idleRiskSessionCount: idleRiskSessions.length,
+      latestSessionSeenAt: pickOpsValue(latestSession, ['last_seen_at', 'created_at'])
+    }
+  };
+}
+
+const POSTGRES_DATA_EXPLORER_DATASETS = {
+  jobCases: {
+    key: "jobCases",
+    label: "Job Cases",
+    description: "Current job cases and quote state.",
+    tableName: "job_cases",
+    countSql: "SELECT COUNT(*)::int AS count FROM job_cases",
+    rowSql: "SELECT id, customer_label, site_label, current_status, original_quote_amount, revised_quote_amount, updated_at FROM job_cases ORDER BY updated_at DESC LIMIT $1",
+    timestampKey: "updated_at",
+    columns: ["id", "customer_label", "site_label", "current_status", "original_quote_amount", "revised_quote_amount", "updated_at"]
+  },
+  fieldRecords: {
+    key: "fieldRecords",
+    label: "Field Records",
+    description: "Latest onsite records and link status.",
+    tableName: "field_records",
+    countSql: "SELECT COUNT(*)::int AS count FROM field_records",
+    rowSql: "SELECT id, job_case_id, primary_reason, secondary_reason, note, status, created_at FROM field_records ORDER BY created_at DESC LIMIT $1",
+    timestampKey: "created_at",
+    columns: ["id", "job_case_id", "primary_reason", "secondary_reason", "note", "status", "created_at"]
+  },
+  agreementRecords: {
+    key: "agreementRecords",
+    label: "Agreements",
+    description: "Agreement records and confirmation channels.",
+    tableName: "agreement_records",
+    countSql: "SELECT COUNT(*)::int AS count FROM agreement_records",
+    rowSql: "SELECT id, job_case_id, status, confirmation_channel, confirmed_amount, confirmed_at, created_at FROM agreement_records ORDER BY COALESCE(confirmed_at, created_at) DESC LIMIT $1",
+    timestampKey: "confirmed_at",
+    columns: ["id", "job_case_id", "status", "confirmation_channel", "confirmed_amount", "confirmed_at", "created_at"]
+  },
+  customerConfirmations: {
+    key: "customerConfirmations",
+    label: "Customer Confirmations",
+    description: "Issued customer confirmation links and recent status.",
+    tableName: "customer_confirmation_links",
+    countSql: "SELECT COUNT(*)::int AS count FROM customer_confirmation_links",
+    rowSql: "SELECT id, job_case_id, status, expires_at, viewed_at, confirmed_at, updated_at FROM customer_confirmation_links ORDER BY COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC LIMIT $1",
+    timestampKey: "updated_at",
+    columns: ["id", "job_case_id", "status", "expires_at", "viewed_at", "confirmed_at", "updated_at"]
+  },
+  timelineEvents: {
+    key: "timelineEvents",
+    label: "Timeline",
+    description: "Recent product timeline events.",
+    tableName: "timeline_events",
+    countSql: "SELECT COUNT(*)::int AS count FROM timeline_events",
+    rowSql: "SELECT id, job_case_id, event_type, summary, created_at FROM timeline_events ORDER BY created_at DESC LIMIT $1",
+    timestampKey: "created_at",
+    columns: ["id", "job_case_id", "event_type", "summary", "created_at"]
+  },
+  users: {
+    key: "users",
+    label: "Users",
+    description: "Accounts and recent login state.",
+    tableName: "users",
+    countSql: "SELECT COUNT(*)::int AS count FROM users",
+    rowSql: "SELECT id, email, display_name, status, last_login_at, updated_at FROM users ORDER BY updated_at DESC LIMIT $1",
+    timestampKey: "updated_at",
+    columns: ["id", "email", "display_name", "status", "last_login_at", "updated_at"]
+  },
+  companies: {
+    key: "companies",
+    label: "Companies",
+    description: "Registered companies and workspace status.",
+    tableName: "companies",
+    countSql: "SELECT COUNT(*)::int AS count FROM companies",
+    rowSql: "SELECT id, name, status, created_at, updated_at FROM companies ORDER BY updated_at DESC LIMIT $1",
+    timestampKey: "updated_at",
+    columns: ["id", "name", "status", "created_at", "updated_at"]
+  },
+  memberships: {
+    key: "memberships",
+    label: "Memberships",
+    description: "Company membership and role state.",
+    tableName: "memberships",
+    countSql: "SELECT COUNT(*)::int AS count FROM memberships",
+    rowSql: "SELECT id, company_id, user_id, role, status, joined_at, updated_at FROM memberships ORDER BY updated_at DESC LIMIT $1",
+    timestampKey: "updated_at",
+    columns: ["id", "company_id", "user_id", "role", "status", "joined_at", "updated_at"]
+  },
+  auditLogs: {
+    key: "auditLogs",
+    label: "Audit Logs",
+    description: "Recent operational audit entries.",
+    tableName: "audit_logs",
+    countSql: "SELECT COUNT(*)::int AS count FROM audit_logs",
+    rowSql: "SELECT id, actor_type, action, resource_type, resource_id, created_at FROM audit_logs ORDER BY created_at DESC LIMIT $1",
+    timestampKey: "created_at",
+    columns: ["id", "actor_type", "action", "resource_type", "resource_id", "created_at"]
+  }
+};
+
+async function buildPostgresDataExplorer(pool, datasetKey = "jobCases", limit = 8) {
+  const selectedConfig = POSTGRES_DATA_EXPLORER_DATASETS[datasetKey] || POSTGRES_DATA_EXPLORER_DATASETS.jobCases;
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 20) : 8;
+
+  const datasets = [];
+  for (const item of Object.values(POSTGRES_DATA_EXPLORER_DATASETS)) {
+    const [countResult, latestResult] = await Promise.all([
+      pool.query(item.countSql),
+      pool.query(item.rowSql, [1])
+    ]);
+    const latestRow = normalizeRow(latestResult.rows[0] || null);
+    datasets.push({
+      key: item.key,
+      label: item.label,
+      description: item.description,
+      count: countResult.rows[0]?.count || 0,
+      latestAt: latestRow?.[item.timestampKey] || null
+    });
+  }
+
+  const [selectedCountResult, selectedRowsResult] = await Promise.all([
+    pool.query(selectedConfig.countSql),
+    pool.query(selectedConfig.rowSql, [safeLimit])
+  ]);
+
+  return {
+    datasets,
+    selected: {
+      key: selectedConfig.key,
+      label: selectedConfig.label,
+      description: selectedConfig.description,
+      tableName: selectedConfig.tableName,
+      columns: selectedConfig.columns,
+      count: selectedCountResult.rows[0]?.count || 0,
+      rows: normalizeRows(selectedRowsResult.rows).map((row) => Object.fromEntries(selectedConfig.columns.map((column) => [column, row?.[column] ?? null])))
+    },
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function buildPostgresOpsActivity({ customerConfirmationLinks, timelineEvents, loginChallenges, limit }) {
+  return {
+    recentCustomerConfirmations: sortOpsRowsDesc(customerConfirmationLinks || [], ['updated_at', 'confirmed_at', 'viewed_at', 'created_at'])
+      .slice(0, limit)
+      .map((item) => ({
+        id: item.id,
+        jobCaseId: item.job_case_id || null,
+        status: item.status,
+        expiresAt: item.expires_at || null,
+        updatedAt: pickOpsValue(item, ['updated_at', 'confirmed_at', 'viewed_at', 'created_at']),
+        confirmedAt: item.confirmed_at || null
+      })),
+    recentTimelineEvents: sortOpsRowsDesc(timelineEvents || [], ['created_at'])
+      .slice(0, limit)
+      .map((item) => ({
+        id: item.id,
+        jobCaseId: item.job_case_id || null,
+        eventType: item.event_type,
+        summary: item.summary,
+        createdAt: item.created_at
+      })),
+    recentAuthChallenges: sortOpsRowsDesc(loginChallenges || [], ['created_at'])
+      .slice(0, limit)
+      .map((item) => ({
+        id: item.id,
+        emailMasked: maskOpsEmailAddress(item.email),
+        status: item.status,
+        deliveryProvider: item.delivery_provider || null,
+        deliveryStatus: item.delivery_status || null,
+        expiresAt: item.expires_at || null,
+        createdAt: item.created_at
+      }))
+  };
+}
+
+function buildLatestPostgresByJobCaseMap(items = [], timestampKeys = ['updated_at', 'created_at']) {
+  const map = new Map();
+  for (const item of sortOpsRowsDesc(items || [], timestampKeys)) {
+    const jobCaseId = pickOpsValue(item, ['job_case_id', 'jobCaseId']);
+    if (!jobCaseId || map.has(jobCaseId)) {
+      continue;
+    }
+    map.set(jobCaseId, item);
+  }
+  return map;
+}
+
+function buildPostgresOpsFocusCaseDescriptor({ jobCase, latestDraft, latestAgreement, latestConfirmation, latestTimeline }) {
+  const currentStatus = jobCase.current_status || jobCase.currentStatus || 'UNEXPLAINED';
+  const revisedQuoteAmount = jobCase.revised_quote_amount ?? jobCase.revisedQuoteAmount ?? null;
+  const hasQuote = revisedQuoteAmount != null && Number.isFinite(Number(revisedQuoteAmount));
+  const hasDraft = Boolean(latestDraft?.body);
+  const hasAgreementRecord = Boolean(latestAgreement?.id);
+  const confirmationStatus = latestConfirmation?.status || null;
+  const latestConfirmationAt = pickOpsValue(latestConfirmation, ['updated_at', 'confirmed_at', 'viewed_at', 'created_at']);
+  const latestTimelineAt = pickOpsValue(latestTimeline, ['created_at']);
+  const isTerminal = currentStatus === 'AGREED' || currentStatus === 'EXCLUDED';
+  const isStaleConfirmation = confirmationStatus && ['ISSUED', 'VIEWED'].includes(confirmationStatus)
+    ? !isWithinOpsHours(latestConfirmationAt, 24)
+    : false;
+
+  const descriptor = {
+    jobCaseId: jobCase.id,
+    customerLabel: jobCase.customer_label || '이름 없는 작업 건',
+    siteLabel: jobCase.site_label || '',
+    currentStatus,
+    revisedQuoteAmount: hasQuote ? Number(revisedQuoteAmount) : null,
+    hasDraft,
+    hasAgreementRecord,
+    latestConfirmationStatus: confirmationStatus,
+    latestConfirmationUpdatedAt: latestConfirmationAt,
+    latestTimelineEventType: latestTimeline?.event_type || null,
+    latestTimelineAt,
+    updatedAt: pickOpsValue(jobCase, ['updated_at', 'created_at']) || latestTimelineAt || latestConfirmationAt || null,
+    focusTone: 'neutral',
+    focusBadge: '기록 확인',
+    focusReasonKey: 'record-check',
+    focusTitle: '기록 확인이 필요한 작업 건입니다.',
+    focusCopy: '진행을 다시 여는 단계는 아니고, 남은 기록이 빠지지 않았는지 확인하는 용도입니다.',
+    focusWhyNow: '최근 흐름을 다시 보면서 기록 누락이 없는지만 짧게 확인하면 됩니다.',
+    focusTargetId: 'timeline-card',
+    score: 10
+  };
+
+  if (confirmationStatus === 'VIEWED' && !isTerminal) {
+    return {
+      ...descriptor,
+      focusTone: 'warning',
+      focusBadge: '열람됨',
+      focusReasonKey: 'confirmation-viewed',
+      focusTitle: '고객이 내용을 본 뒤 마지막 정리가 멈춘 작업 건입니다.',
+      focusCopy: '고객 확인 카드와 합의 기록을 같이 보면, 지금 바로 정리해야 할 마지막 상태가 무엇인지 가장 빨리 보입니다.',
+      focusWhyNow: '고객이 이미 링크를 열었으니, 지금 정리하면 왕복 연락을 줄일 수 있습니다.',
+      focusTargetId: 'customer-confirm-card',
+      score: 100
+    };
+  }
+
+  if (isStaleConfirmation && !isTerminal) {
+    return {
+      ...descriptor,
+      focusTone: 'warning',
+      focusBadge: '응답 지연',
+      focusReasonKey: 'confirmation-stale',
+      focusTitle: '발급된 확인 링크가 오래 멈춘 작업 건입니다.',
+      focusCopy: '고객 확인 링크는 발급됐지만 후속 정리가 멈춘 상태입니다. 링크 상태와 마지막 메모를 먼저 확인해 보세요.',
+      focusWhyNow: '확인 흐름이 길어질수록 후속 연락 맥락이 흐려집니다. 지금 다시 보는 편이 안전합니다.',
+      focusTargetId: 'customer-confirm-card',
+      score: 92
+    };
+  }
+
+  if (currentStatus === 'ON_HOLD') {
+    return {
+      ...descriptor,
+      focusTone: 'warning',
+      focusBadge: '답변 대기',
+      focusReasonKey: 'on-hold-followup',
+      focusTitle: '고객 답변을 기다리는 작업 건입니다.',
+      focusCopy: '새 입력보다 마지막 반응과 보류 메모를 다시 확인하는 것이 우선입니다.',
+      focusWhyNow: '보류 건은 다음 응답 시점을 놓치지 않는 것이 가장 중요합니다.',
+      focusTargetId: 'agreement-card',
+      score: 84
+    };
+  }
+
+  if (!hasQuote && !isTerminal) {
+    return {
+      ...descriptor,
+      focusTone: 'warning',
+      focusBadge: '견적 병목',
+      focusReasonKey: 'quote-missing',
+      focusTitle: '변경 금액이 아직 비어 있는 작업 건입니다.',
+      focusCopy: '견적이 비어 있으면 설명 초안과 고객 확인 흐름이 같이 밀립니다. 금액과 범위를 먼저 정리해 주세요.',
+      focusWhyNow: '이 단계가 막히면 뒤 단계가 모두 멈춥니다.',
+      focusTargetId: 'quote-card',
+      score: 78
+    };
+  }
+
+  if (hasQuote && !hasDraft && !isTerminal) {
+    return {
+      ...descriptor,
+      focusTone: 'warning',
+      focusBadge: '초안 필요',
+      focusReasonKey: 'draft-missing',
+      focusTitle: '설명 초안이 아직 없는 작업 건입니다.',
+      focusCopy: '금액 정리는 끝났고, 이제 고객에게 보낼 설명 문장만 만들면 다음 단계로 넘어갈 수 있습니다.',
+      focusWhyNow: '초안이 없으면 확인 링크 발급과 합의 기록도 자연스럽게 이어지지 않습니다.',
+      focusTargetId: 'draft-card',
+      score: 72
+    };
+  }
+
+  if (hasDraft && !confirmationStatus && !hasAgreementRecord && !isTerminal) {
+    return {
+      ...descriptor,
+      focusTone: 'neutral',
+      focusBadge: '확인 전',
+      focusReasonKey: 'confirm-link-needed',
+      focusTitle: '설명은 준비됐지만 고객 확인 흐름이 아직 없는 작업 건입니다.',
+      focusCopy: '고객 확인 링크를 발급하거나 합의 기록을 남기면 흐름이 마무리 단계로 넘어갑니다.',
+      focusWhyNow: '이 단계는 짧게 처리할 수 있어서 지금 정리하면 전체 흐름이 빠르게 닫힙니다.',
+      focusTargetId: 'customer-confirm-card',
+      score: 66
+    };
+  }
+
+  if (hasAgreementRecord && !isTerminal) {
+    return {
+      ...descriptor,
+      focusTone: 'neutral',
+      focusBadge: '상태 점검',
+      focusReasonKey: 'status-review',
+      focusTitle: '합의 기록은 있지만 최종 상태 확인이 더 필요한 작업 건입니다.',
+      focusCopy: '합의 기록 카드와 고객 확인 상태를 함께 보면서 마지막 상태를 명확하게 정리해 주세요.',
+      focusWhyNow: '이미 근거는 있으니, 최종 상태만 정리하면 흐름을 닫을 수 있습니다.',
+      focusTargetId: 'agreement-card',
+      score: 58
+    };
+  }
+
+  return descriptor;
+}
+
+function buildPostgresOpsFocusCases({ jobCases, messageDrafts, agreementRecords, customerConfirmationLinks, timelineEvents, limit }) {
+  const latestDraftByJobCase = buildLatestPostgresByJobCaseMap(messageDrafts, ['updated_at', 'created_at']);
+  const latestAgreementByJobCase = buildLatestPostgresByJobCaseMap(agreementRecords, ['confirmed_at', 'created_at']);
+  const latestConfirmationByJobCase = buildLatestPostgresByJobCaseMap(customerConfirmationLinks, ['updated_at', 'confirmed_at', 'viewed_at', 'created_at']);
+  const latestTimelineByJobCase = buildLatestPostgresByJobCaseMap(timelineEvents, ['created_at']);
+
+  return (jobCases || [])
+    .map((jobCase) => buildPostgresOpsFocusCaseDescriptor({
+      jobCase,
+      latestDraft: latestDraftByJobCase.get(jobCase.id) || null,
+      latestAgreement: latestAgreementByJobCase.get(jobCase.id) || null,
+      latestConfirmation: latestConfirmationByJobCase.get(jobCase.id) || null,
+      latestTimeline: latestTimelineByJobCase.get(jobCase.id) || null
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      const leftTime = left.updatedAt ? new Date(left.updatedAt).getTime() : 0;
+      const rightTime = right.updatedAt ? new Date(right.updatedAt).getTime() : 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, limit);
+}
+
+function getPostgresAuthDeliveryProvider() {
+  return String(config.mailProvider || (config.nodeEnv === "production" ? "RESEND" : "FILE")).trim().toUpperCase();
+}
+
+function parsePostgresTrustedOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildPostgresOpsRuntimeReadiness() {
+  const mailProvider = getPostgresAuthDeliveryProvider();
+  const trustedOrigins = parsePostgresTrustedOrigins(config.trustedOrigins);
+  const mailFromConfigured = Boolean(String(config.mailFrom || "").trim());
+  const resendConfigured = Boolean(String(config.resendApiKey || "").trim());
+  const appBaseUrlConfigured = Boolean(String(config.appBaseUrl || "").trim());
+  const authDebugLinks = Boolean(config.authDebugLinks);
+  const authEnforceTrustedOrigin = Boolean(config.authEnforceTrustedOrigin);
+
+  let authDeliveryMode = "FILE_PREVIEW";
+  if (mailProvider === "RESEND") {
+    authDeliveryMode = resendConfigured && mailFromConfigured ? "RESEND_LIVE" : "RESEND_CONFIG_REQUIRED";
+  }
+
+  let authOperationalReadiness = "PREVIEW_ONLY";
+  if (mailProvider === "RESEND" && (!resendConfigured || !mailFromConfigured)) {
+    authOperationalReadiness = "MAIL_CONFIG_REQUIRED";
+  } else if (!authEnforceTrustedOrigin || authDebugLinks) {
+    authOperationalReadiness = "HARDENING_REQUIRED";
+  } else if (mailProvider === "RESEND" && resendConfigured && mailFromConfigured) {
+    authOperationalReadiness = "READY";
+  }
+
+  return {
+    mailProvider,
+    mailFromConfigured,
+    resendConfigured,
+    authDebugLinks,
+    authEnforceTrustedOrigin,
+    trustedOriginCount: trustedOrigins.length,
+    trustedOriginsConfigured: trustedOrigins.length > 0,
+    appBaseUrlConfigured,
+    authDeliveryMode,
+    authOperationalReadiness
+  };
 }
 
 function toCompanySummary(row) {
@@ -111,6 +671,21 @@ function plusDays(days) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+function plusSeconds(seconds) {
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function isPast(value) {
+  return new Date(value).getTime() < Date.now();
+}
+
+function isSessionIdleExpired(session) {
+  if (!session?.last_seen_at) {
+    return false;
+  }
+  return Date.now() - new Date(session.last_seen_at).getTime() > config.sessionIdleTimeoutSeconds * 1000;
+}
+
 function toCustomerConfirmationLink(row, token) {
   const normalized = normalizeRow(row);
   if (!normalized) {
@@ -170,11 +745,11 @@ async function getCustomerConfirmationRowForUpdate(client, tokenHash) {
 
 async function assertAvailableCustomerConfirmation(client, row, codePrefix = "CUSTOMER_CONFIRMATION") {
   if (!row) {
-    throw new HttpError(404, `${codePrefix}_NOT_FOUND`, "고객 확인 링크를 찾을 수 없습니다.");
+    throw new HttpError(404, `${codePrefix}_NOT_FOUND`, "怨좉컼 ?뺤씤 留곹겕瑜?李얠쓣 ???놁뒿?덈떎.");
   }
 
   if (row.status === "REVOKED") {
-    throw new HttpError(410, `${codePrefix}_REVOKED`, "이미 취소된 고객 확인 링크입니다.");
+    throw new HttpError(410, `${codePrefix}_REVOKED`, "?대? 痍⑥냼??怨좉컼 ?뺤씤 留곹겕?낅땲??");
   }
 
   if (new Date(row.expires_at).getTime() < Date.now()) {
@@ -195,7 +770,7 @@ async function assertAvailableCustomerConfirmation(client, row, codePrefix = "CU
       });
     }
 
-    throw new HttpError(410, `${codePrefix}_EXPIRED`, "고객 확인 링크가 만료되었습니다.");
+    throw new HttpError(410, `${codePrefix}_EXPIRED`, "怨좉컼 ?뺤씤 留곹겕媛 留뚮즺?섏뿀?듬땲??");
   }
 }
 function buildListByScopeQuery(scope = {}) {
@@ -428,21 +1003,18 @@ async function buildSessionPayloadFromClient(client, session) {
   if (!normalizedSession || normalizedSession.revoked_at) {
     return null;
   }
-  if (new Date(normalizedSession.expires_at).getTime() < Date.now()) {
+  if (isPast(normalizedSession.expires_at) || isSessionIdleExpired(normalizedSession)) {
     return null;
   }
 
   const userResult = await client.query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [normalizedSession.user_id]);
-  const membershipResult = await client.query(
-    `
+  const membershipResult = await client.query(`
       SELECT memberships.*, companies.name AS company_name
       FROM memberships
       JOIN companies ON companies.id = memberships.company_id
       WHERE memberships.id = $1
       LIMIT 1
-    `,
-    [normalizedSession.membership_id]
-  );
+    `, [normalizedSession.membership_id]);
 
   const user = normalizeRow(userResult.rows[0] || null);
   const membership = normalizeRow(membershipResult.rows[0] || null);
@@ -455,38 +1027,36 @@ async function buildSessionPayloadFromClient(client, session) {
     userId: user.id,
     email: user.email,
     displayName: user.display_name,
+    phoneNumber: user.phone_number,
     companyId: membership.company_id,
     companyName: membership.company_name,
     role: membership.role,
     membershipId: membership.id,
     expiresAt: normalizedSession.expires_at,
+    lastSeenAt: normalizedSession.last_seen_at,
     companies: (await listActiveMembershipRows(client, user.id)).map((row) => toCompanySummary(row))
   };
 }
 
-async function createAuthSession(client, { userId, membershipId, companyId }) {
+async function createAuthSession(client, { userId, membershipId, companyId, createdAt = new Date().toISOString() }) {
   const sessionId = createRepositoryId('session');
   const refreshToken = crypto.randomBytes(24).toString('base64url');
-  const timestamp = new Date().toISOString();
-  await client.query(
-    `
+  await client.query(`
       INSERT INTO sessions (
         id, user_id, company_id, membership_id, refresh_token_hash,
         last_seen_at, expires_at, revoked_at, created_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `,
-    [
+    `, [
       sessionId,
       userId,
       companyId,
       membershipId,
       sha256(refreshToken),
-      timestamp,
-      plusDays(30),
+      createdAt,
+      plusSeconds(config.refreshSessionMaxAgeSeconds),
       null,
-      timestamp
-    ]
-  );
+      createdAt
+    ]);
 
   return {
     sessionId,
@@ -513,16 +1083,16 @@ async function resolveInvitationForAuth(client, invitationToken, challengeEmail,
   const invitation = normalizeRow(invitationResult.rows[0] || null);
 
   if (!invitation) {
-    throw new HttpError(404, 'INVITATION_NOT_FOUND', '초대 정보를 찾을 수 없습니다.');
+    throw new HttpError(404, 'INVITATION_NOT_FOUND', '珥덈? ?뺣낫瑜?李얠쓣 ???놁뒿?덈떎.');
   }
   if (invitation.status !== 'ISSUED') {
-    throw new HttpError(409, 'INVITATION_NOT_AVAILABLE', '이미 사용할 수 없는 초대입니다.');
+    throw new HttpError(409, 'INVITATION_NOT_AVAILABLE', '?대? ?ъ슜?????녿뒗 珥덈??낅땲??');
   }
   if (new Date(invitation.expires_at).getTime() < Date.now()) {
-    throw new HttpError(410, 'INVITATION_EXPIRED', '초대 링크가 만료되었습니다.');
+    throw new HttpError(410, 'INVITATION_EXPIRED', '珥덈? 留곹겕媛 留뚮즺?섏뿀?듬땲??');
   }
   if (invitation.email !== challengeEmail) {
-    throw new HttpError(403, 'INVITATION_EMAIL_MISMATCH', '초대받은 이메일과 로그인 이메일이 일치하지 않습니다.');
+    throw new HttpError(403, 'INVITATION_EMAIL_MISMATCH', '珥덈?諛쏆? ?대찓?쇨낵 濡쒓렇???대찓?쇱씠 ?쇱튂?섏? ?딆뒿?덈떎.');
   }
 
   const membershipResult = await client.query(
@@ -676,34 +1246,114 @@ export function createPostgresRepositoryBundle({
         };
       },
       listRecentBackups: async (limit = 10) => listRecentBackupsFromDirectory(limit),
-      getOpsSnapshot: async (limit = 5) => ({
-        storage: await (async () => {
-          const counts = await Promise.all([
-            pool.query("SELECT COUNT(*)::int AS count FROM job_cases"),
-            pool.query("SELECT COUNT(*)::int AS count FROM field_records"),
-            pool.query("SELECT COUNT(*)::int AS count FROM agreement_records")
-          ]);
-          return {
+      getDataExplorer: async (datasetKey = "jobCases", limit = 8) => buildPostgresDataExplorer(pool, datasetKey, limit),
+      getOpsSnapshot: async (limit = 5) => {
+        const [
+          jobCaseCount,
+          fieldRecordCount,
+          agreementCount,
+          backups,
+          auditResult,
+          jobCaseResult,
+          agreementResult,
+          draftResult,
+          confirmationResult,
+          timelineResult,
+          loginChallengeResult,
+          sessionResult
+        ] = await Promise.all([
+          pool.query("SELECT COUNT(*)::int AS count FROM job_cases"),
+          pool.query("SELECT COUNT(*)::int AS count FROM field_records"),
+          pool.query("SELECT COUNT(*)::int AS count FROM agreement_records"),
+          listRecentBackupsFromDirectory(limit),
+          pool.query(`
+            SELECT id, actor_type, action, resource_type, resource_id, created_at
+            FROM audit_logs
+            ORDER BY created_at DESC
+            LIMIT $1
+          `, [limit]),
+          pool.query("SELECT id, customer_label, site_label, current_status, revised_quote_amount, updated_at, created_at FROM job_cases ORDER BY updated_at DESC"),
+          pool.query("SELECT id, status, confirmed_at, created_at FROM agreement_records ORDER BY COALESCE(confirmed_at, created_at) DESC"),
+          pool.query("SELECT id, job_case_id, body, updated_at, created_at FROM message_drafts ORDER BY COALESCE(updated_at, created_at) DESC"),
+          pool.query("SELECT id, job_case_id, status, expires_at, viewed_at, confirmed_at, created_at, updated_at FROM customer_confirmation_links ORDER BY COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC"),
+          pool.query("SELECT id, job_case_id, event_type, summary, created_at FROM timeline_events ORDER BY created_at DESC"),
+          pool.query("SELECT id, email, status, delivery_provider, delivery_status, expires_at, created_at FROM login_challenges ORDER BY created_at DESC"),
+          pool.query("SELECT id, user_id, company_id, last_seen_at, expires_at, revoked_at, created_at FROM sessions ORDER BY COALESCE(last_seen_at, created_at) DESC")
+        ]);
+
+        const jobCases = normalizeRows(jobCaseResult.rows);
+        const agreements = normalizeRows(agreementResult.rows);
+        const drafts = normalizeRows(draftResult.rows);
+        const confirmations = normalizeRows(confirmationResult.rows);
+        const timelineEvents = normalizeRows(timelineResult.rows);
+        const loginChallenges = normalizeRows(loginChallengeResult.rows);
+        const sessions = normalizeRows(sessionResult.rows);
+        const signals = buildPostgresOpsSignals({
+          agreementRecords: agreements,
+          customerConfirmationLinks: confirmations,
+          timelineEvents,
+          loginChallenges,
+          sessions
+        });
+        const activity = buildPostgresOpsActivity({
+          customerConfirmationLinks: confirmations,
+          timelineEvents,
+          loginChallenges,
+          limit
+        });
+        const focusCases = buildPostgresOpsFocusCases({
+          jobCases,
+          messageDrafts: drafts,
+          agreementRecords: agreements,
+          customerConfirmationLinks: confirmations,
+          timelineEvents,
+          limit
+        });
+
+        return {
+          storage: {
             storageEngine: "POSTGRES",
             objectStorageProvider: config.objectStorageProvider,
             databaseUrlMasked: maskDatabaseUrl(databaseUrl),
             backupDir: config.backupDir,
             updatedAt: new Date().toISOString(),
             counts: {
-              jobCases: counts[0].rows[0]?.count || 0,
-              fieldRecords: counts[1].rows[0]?.count || 0,
-              agreements: counts[2].rows[0]?.count || 0
+              jobCases: jobCaseCount.rows[0]?.count || 0,
+              fieldRecords: fieldRecordCount.rows[0]?.count || 0,
+              agreements: agreementCount.rows[0]?.count || 0
             }
-          };
-        })(),
-        backups: await listRecentBackupsFromDirectory(limit),
-        runtime: {
-          nodeEnv: config.nodeEnv,
-          appBaseUrl: config.appBaseUrl || null,
-          objectStorageProvider: config.objectStorageProvider,
-          storageEngine: "POSTGRES"
-        }
-      })
+          },
+          backups,
+          backupSummary: {
+            totalRecentBackups: backups.length,
+            latestBackupName: backups[0]?.name || null,
+            latestBackupAt: backups[0]?.updatedAt || null
+          },
+          signals,
+          focusCases,
+          activity: {
+            recentAuditLogs: normalizeRows(auditResult.rows).map((entry) => ({
+              id: entry.id,
+              actorType: entry.actor_type,
+              action: entry.action,
+              resourceType: entry.resource_type,
+              resourceId: entry.resource_id || null,
+              createdAt: entry.created_at
+            })),
+            recentCustomerConfirmations: activity.recentCustomerConfirmations,
+            recentTimelineEvents: activity.recentTimelineEvents,
+            recentAuthChallenges: activity.recentAuthChallenges
+          },
+          runtime: {
+            nodeEnv: config.nodeEnv,
+            appBaseUrl: config.appBaseUrl || null,
+            objectStorageProvider: config.objectStorageProvider,
+            storageEngine: "POSTGRES",
+            ...buildPostgresOpsRuntimeReadiness()
+          },
+          generatedAt: new Date().toISOString()
+        };
+      }
     },
     jobCaseRepository: {
       listByScope: async (scope = {}) => {
@@ -1205,7 +1855,7 @@ export function createPostgresRepositoryBundle({
           await assertAvailableCustomerConfirmation(client, row, 'CUSTOMER_CONFIRMATION');
 
           if (row.confirmed_at || row.status === 'CONFIRMED') {
-            throw new HttpError(409, 'CUSTOMER_CONFIRMATION_ALREADY_ACKNOWLEDGED', '이미 고객 확인이 완료된 링크입니다.');
+            throw new HttpError(409, 'CUSTOMER_CONFIRMATION_ALREADY_ACKNOWLEDGED', '?대? 怨좉컼 ?뺤씤???꾨즺??留곹겕?낅땲??');
           }
 
           const timestamp = new Date().toISOString();
@@ -1249,26 +1899,20 @@ export function createPostgresRepositoryBundle({
     authRepository: {
       issueChallenge: async ({ email, token, requestIp, deliveryProvider, deliveryStatus }) => {
         const normalizedEmail = String(email || '').trim().toLowerCase();
-        const recentResult = await pool.query(
-          `SELECT created_at FROM login_challenges WHERE email = $1 ORDER BY created_at DESC LIMIT 1`,
-          [normalizedEmail]
-        );
+        const recentResult = await pool.query(`SELECT created_at FROM login_challenges WHERE email = $1 ORDER BY created_at DESC LIMIT 1`, [normalizedEmail]);
         const recent = normalizeRow(recentResult.rows[0] || null);
         if (recent) {
           const elapsed = Date.now() - new Date(recent.created_at).getTime();
           if (elapsed < 60 * 1000) {
-            throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '잠시 후 다시 시도해 주세요.');
+            throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '?? ? ?? ??? ???.');
           }
         }
 
         const bucketStart = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const recentCountResult = await pool.query(
-          `SELECT COUNT(*)::int AS count FROM login_challenges WHERE email = $1 AND created_at >= $2`,
-          [normalizedEmail, bucketStart]
-        );
+        const recentCountResult = await pool.query(`SELECT COUNT(*)::int AS count FROM login_challenges WHERE email = $1 AND created_at >= $2`, [normalizedEmail, bucketStart]);
         const recentCount = Number(recentCountResult.rows[0]?.count || 0);
         if (recentCount >= 5) {
-          throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '로그인 링크 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+          throw new HttpError(429, 'AUTH_CHALLENGE_RATE_LIMITED', '??? ?? ??? ?? ????. ?? ? ?? ??? ???.');
         }
 
         const userResult = await pool.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [normalizedEmail]);
@@ -1279,22 +1923,26 @@ export function createPostgresRepositoryBundle({
           email: normalizedEmail,
           tokenHash: sha256(token),
           status: 'ISSUED',
-          expiresAt: plusMinutes(15),
+          expiresAt: plusMinutes(config.authChallengeTtlMinutes),
           consumedAt: null,
           requestIp: requestIp || null,
-          deliveryProvider: deliveryProvider || 'FILE',
+          deliveryProvider: deliveryProvider || 'PENDING',
           deliveryStatus: deliveryStatus || 'PENDING',
           createdAt: new Date().toISOString()
         };
 
-        await pool.query(
-          `
+        await pool.query(`
+            UPDATE login_challenges
+            SET status = 'SUPERSEDED'
+            WHERE email = $1 AND status = 'ISSUED'
+          `, [normalizedEmail]);
+
+        await pool.query(`
             INSERT INTO login_challenges (
               id, user_id, email, token_hash, status, expires_at, consumed_at,
               request_ip, delivery_provider, delivery_status, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-          `,
-          [
+          `, [
             challenge.id,
             challenge.userId,
             challenge.email,
@@ -1306,14 +1954,21 @@ export function createPostgresRepositoryBundle({
             challenge.deliveryProvider,
             challenge.deliveryStatus,
             challenge.createdAt
-          ]
-        );
+          ]);
 
         return {
           id: challenge.id,
           email: challenge.email,
           expiresAt: challenge.expiresAt
         };
+      },
+      updateChallengeDelivery: async ({ challengeId, deliveryProvider, deliveryStatus }) => {
+        await pool.query(`
+          UPDATE login_challenges
+          SET delivery_provider = $1,
+              delivery_status = $2
+          WHERE id = $3
+        `, [deliveryProvider || null, deliveryStatus || null, challengeId]);
       },
       verifyChallenge: async ({ challengeId, token, displayName, companyName, invitationToken }) => {
         return withTransaction(pool, async (client) => {
@@ -1324,16 +1979,16 @@ export function createPostgresRepositoryBundle({
           );
           const challenge = normalizeRow(challengeResult.rows[0] || null);
           if (!challenge) {
-            throw new HttpError(404, 'AUTH_CHALLENGE_NOT_FOUND', '로그인 챌린지를 찾을 수 없습니다.');
+            throw new HttpError(404, 'AUTH_CHALLENGE_NOT_FOUND', '濡쒓렇??梨뚮┛吏瑜?李얠쓣 ???놁뒿?덈떎.');
           }
           if (challenge.status !== 'ISSUED') {
-            throw new HttpError(409, 'AUTH_CHALLENGE_NOT_AVAILABLE', '이미 사용되었거나 사용할 수 없는 로그인 챌린지입니다.');
+            throw new HttpError(409, 'AUTH_CHALLENGE_NOT_AVAILABLE', '?대? ?ъ슜?섏뿀嫄곕굹 ?ъ슜?????녿뒗 濡쒓렇??梨뚮┛吏?낅땲??');
           }
           if (challenge.token_hash !== tokenHash) {
-            throw new HttpError(403, 'AUTH_CHALLENGE_INVALID', '로그인 검증 토큰이 올바르지 않습니다.');
+            throw new HttpError(403, 'AUTH_CHALLENGE_INVALID', '濡쒓렇??寃利??좏겙???щ컮瑜댁? ?딆뒿?덈떎.');
           }
           if (new Date(challenge.expires_at).getTime() < Date.now()) {
-            throw new HttpError(410, 'AUTH_CHALLENGE_EXPIRED', '로그인 챌린지가 만료되었습니다.');
+            throw new HttpError(410, 'AUTH_CHALLENGE_EXPIRED', '濡쒓렇??梨뚮┛吏媛 留뚮즺?섏뿀?듬땲??');
           }
 
           const userResult = await client.query(`SELECT * FROM users WHERE email = $1 LIMIT 1`, [challenge.email]);
@@ -1373,7 +2028,7 @@ export function createPostgresRepositoryBundle({
           let memberships = await listActiveMembershipRows(client, user.id);
 
           if (!invitedMembership && memberships.length === 0 && !String(companyName || '').trim()) {
-            throw new HttpError(409, 'AUTH_SETUP_REQUIRED', '회사 이름을 입력해 첫 로그인 설정을 완료해 주세요.', {
+            throw new HttpError(409, 'AUTH_SETUP_REQUIRED', '?뚯궗 ?대쫫???낅젰??泥?濡쒓렇???ㅼ젙???꾨즺??二쇱꽭??', {
               companyName: 'REQUIRED'
             });
           }
@@ -1432,15 +2087,16 @@ export function createPostgresRepositoryBundle({
             : memberships[0];
 
           if (!selectedMembership) {
-            throw new HttpError(500, 'AUTH_MEMBERSHIP_RESOLUTION_FAILED', '활성 회사 멤버십을 확인하지 못했습니다.');
+            throw new HttpError(500, 'AUTH_MEMBERSHIP_RESOLUTION_FAILED', '?쒖꽦 ?뚯궗 硫ㅻ쾭??쓣 ?뺤씤?섏? 紐삵뻽?듬땲??');
           }
 
+          const timestamp = new Date().toISOString();
           const session = await createAuthSession(client, {
             userId: user.id,
             membershipId: selectedMembership.membership_id || selectedMembership.id,
-            companyId: selectedMembership.company_id
+            companyId: selectedMembership.company_id,
+            createdAt: timestamp
           });
-          const timestamp = new Date().toISOString();
           await client.query(`UPDATE users SET last_login_at = $1, updated_at = $2 WHERE id = $3`, [timestamp, timestamp, user.id]);
           await client.query(`UPDATE login_challenges SET status = 'CONSUMED', consumed_at = $1 WHERE id = $2`, [timestamp, challenge.id]);
 
@@ -1461,38 +2117,110 @@ export function createPostgresRepositoryBundle({
           };
         });
       },
-      getSessionContext: async (sessionId) => {
-        const result = await pool.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1`, [sessionId]);
-        return buildSessionPayloadFromClient(pool, result.rows[0] || null);
-      },
-      refreshSessionByRefreshToken: async (refreshToken) => {
-        return withTransaction(pool, async (client) => {
-          const sessionResult = await client.query(
-            `SELECT * FROM sessions WHERE refresh_token_hash = $1 LIMIT 1 FOR UPDATE`,
-            [sha256(refreshToken)]
-          );
-          const session = normalizeRow(sessionResult.rows[0] || null);
+        getSessionContext: async (sessionId) => {
+          return withTransaction(pool, async (client) => {
+            const result = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1 FOR UPDATE`, [sessionId]);
+            const session = normalizeRow(result.rows[0] || null);
           if (!session || session.revoked_at) {
-            throw new HttpError(401, 'AUTH_REFRESH_INVALID', '리프레시 세션이 유효하지 않습니다.');
+            return null;
           }
-          if (new Date(session.expires_at).getTime() < Date.now()) {
-            throw new HttpError(401, 'AUTH_REFRESH_EXPIRED', '리프레시 세션이 만료되었습니다. 다시 로그인해 주세요.');
+          if (isPast(session.expires_at) || isSessionIdleExpired(session)) {
+            await client.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [new Date().toISOString(), session.id]);
+            return null;
           }
 
-          const nextRefreshToken = crypto.randomBytes(24).toString('base64url');
-          await client.query(
-            `UPDATE sessions SET last_seen_at = $1, refresh_token_hash = $2 WHERE id = $3`,
-            [new Date().toISOString(), sha256(nextRefreshToken), session.id]
+          const touchedAt = new Date().toISOString();
+          await client.query(`UPDATE sessions SET last_seen_at = $1 WHERE id = $2`, [touchedAt, session.id]);
+            return buildSessionPayloadFromClient(client, { ...session, last_seen_at: touchedAt });
+          });
+        },
+        updateUserProfile: async ({ userId, displayName, phoneNumber }) => {
+          const nextDisplayName = normalizeProfileDisplayName(displayName);
+          const nextPhoneNumber = normalizeProfilePhoneNumber(phoneNumber);
+          const updatedAt = new Date().toISOString();
+          const result = await pool.query(
+            `
+              UPDATE users
+              SET display_name = $1,
+                  phone_number = $2,
+                  updated_at = $3
+              WHERE id = $4
+              RETURNING id, email, display_name, phone_number, updated_at
+            `,
+            [nextDisplayName, nextPhoneNumber, updatedAt, userId]
           );
-          const nextResult = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1`, [session.id]);
+          const user = normalizeRow(result.rows[0] || null);
+          if (!user) {
+            throw new HttpError(404, 'USER_NOT_FOUND', '계정 정보를 찾을 수 없어요.');
+          }
+          return {
+            id: user.id,
+            email: user.email,
+            displayName: user.display_name,
+            phoneNumber: user.phone_number,
+            updatedAt: user.updated_at
+          };
+        },
+        listRecentChallengesByEmail: async (email, limit = 5) => {
+          const normalizedEmail = String(email || "").trim().toLowerCase();
+          if (!normalizedEmail) {
+            return [];
+          }
+          const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 20) : 5;
+          const result = await pool.query(
+            `
+              SELECT id, email, status, delivery_provider, delivery_status, expires_at, consumed_at, created_at
+              FROM login_challenges
+              WHERE email = $1
+              ORDER BY created_at DESC
+              LIMIT $2
+            `,
+            [normalizedEmail, safeLimit]
+          );
+          return normalizeRows(result.rows).map((item) => ({
+            id: item.id,
+            email: item.email,
+            status: item.status,
+            deliveryProvider: item.delivery_provider,
+            deliveryStatus: item.delivery_status,
+            expiresAt: item.expires_at,
+            consumedAt: item.consumed_at,
+            createdAt: item.created_at
+          }));
+        },
+        refreshSessionByRefreshToken: async (refreshToken) => {
+        return withTransaction(pool, async (client) => {
+          const sessionResult = await client.query(`SELECT * FROM sessions WHERE refresh_token_hash = $1 LIMIT 1 FOR UPDATE`, [sha256(refreshToken)]);
+          const session = normalizeRow(sessionResult.rows[0] || null);
+          if (!session || session.revoked_at) {
+            throw new HttpError(401, 'AUTH_REFRESH_INVALID', '???? ??? ???? ????.');
+          }
+          if (isPast(session.expires_at)) {
+            await client.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [new Date().toISOString(), session.id]);
+            throw new HttpError(401, 'AUTH_REFRESH_EXPIRED', '???? ??? ??????. ?? ???? ???.');
+          }
+          if (isSessionIdleExpired(session)) {
+            await client.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [new Date().toISOString(), session.id]);
+            throw new HttpError(401, 'AUTH_SESSION_IDLE_EXPIRED', '?? ???? ?? ??? ??????. ?? ???? ???.');
+          }
+
+          const rotatedAt = new Date().toISOString();
+          const nextSession = await createAuthSession(client, {
+            userId: session.user_id,
+            membershipId: session.membership_id,
+            companyId: session.company_id,
+            createdAt: rotatedAt
+          });
+          await client.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [rotatedAt, session.id]);
+          const nextResult = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1`, [nextSession.sessionId]);
           const context = await buildSessionPayloadFromClient(client, nextResult.rows[0] || null);
           if (!context) {
-            throw new HttpError(401, 'AUTH_SESSION_INVALID', '세션이 유효하지 않습니다. 다시 로그인해 주세요.');
+            throw new HttpError(401, 'AUTH_SESSION_INVALID', '??? ???? ????. ?? ???? ???.');
           }
 
           return {
-            sessionId: session.id,
-            refreshToken: nextRefreshToken,
+            sessionId: nextSession.sessionId,
+            refreshToken: nextSession.refreshToken,
             user: {
               id: context.userId,
               email: context.email,
@@ -1507,18 +2235,67 @@ export function createPostgresRepositoryBundle({
           };
         });
       },
-      revokeSession: async (sessionId) => {
-        await pool.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [new Date().toISOString(), sessionId]);
-      },
-      revokeSessionByRefreshToken: async (refreshToken) => {
-        await pool.query(`UPDATE sessions SET revoked_at = $1 WHERE refresh_token_hash = $2`, [new Date().toISOString(), sha256(refreshToken)]);
-      },
+        revokeSession: async (sessionId) => {
+          await pool.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [new Date().toISOString(), sessionId]);
+        },
+        listSessionsByUser: async (userId) => {
+          const result = await pool.query(
+            `
+              SELECT sessions.id, sessions.company_id, sessions.membership_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at, sessions.created_at,
+                     companies.name AS company_name, memberships.role
+              FROM sessions
+              JOIN memberships ON memberships.id = sessions.membership_id
+              JOIN companies ON companies.id = sessions.company_id
+              WHERE sessions.user_id = $1
+              ORDER BY COALESCE(sessions.last_seen_at, sessions.created_at) DESC
+            `,
+            [userId]
+          );
+          return normalizeRows(result.rows).map((item) => ({
+            id: item.id,
+            companyId: item.company_id,
+            companyName: item.company_name,
+            role: item.role,
+            membershipId: item.membership_id,
+            lastSeenAt: item.last_seen_at,
+            expiresAt: item.expires_at,
+            revokedAt: item.revoked_at,
+            createdAt: item.created_at
+          }));
+        },
+        revokeOwnedSession: async ({ userId, sessionId }) => {
+          return withTransaction(pool, async (client) => {
+            const result = await client.query(
+              `SELECT * FROM sessions WHERE id = $1 LIMIT 1 FOR UPDATE`,
+              [sessionId]
+            );
+            const session = normalizeRow(result.rows[0] || null);
+            if (!session || session.user_id !== userId) {
+              throw new HttpError(404, 'AUTH_SESSION_NOT_FOUND', '세션 정보를 찾을 수 없어요.');
+            }
+            if (session.revoked_at) {
+              return {
+                id: session.id,
+                revokedAt: session.revoked_at
+              };
+            }
+            const revokedAt = new Date().toISOString();
+            await client.query(`UPDATE sessions SET revoked_at = $1 WHERE id = $2`, [revokedAt, session.id]);
+            return {
+              id: session.id,
+              revokedAt
+            };
+          });
+        },
+        revokeSessionByRefreshToken: async (refreshToken) => {
+          await pool.query(`UPDATE sessions SET revoked_at = $1 WHERE refresh_token_hash = $2`, [new Date().toISOString(), sha256(refreshToken)]);
+        },
       switchSessionCompany: async ({ sessionId, userId, companyId }) => {
         return withTransaction(pool, async (client) => {
           const sessionResult = await client.query(`SELECT * FROM sessions WHERE id = $1 LIMIT 1 FOR UPDATE`, [sessionId]);
           const session = normalizeRow(sessionResult.rows[0] || null);
           if (!session || session.user_id !== userId || session.revoked_at) {
-            throw new HttpError(401, 'AUTH_SESSION_INVALID', '세션이 유효하지 않습니다.');
+            throw new HttpError(401, 'AUTH_SESSION_INVALID', '?몄뀡???좏슚?섏? ?딆뒿?덈떎.');
           }
 
           const membershipResult = await client.query(
@@ -1533,7 +2310,7 @@ export function createPostgresRepositoryBundle({
           );
           const membership = normalizeRow(membershipResult.rows[0] || null);
           if (!membership) {
-            throw new HttpError(403, 'COMPANY_ACCESS_DENIED', '해당 회사에 접근할 권한이 없습니다.');
+            throw new HttpError(403, 'COMPANY_ACCESS_DENIED', '?대떦 ?뚯궗???묎렐??沅뚰븳???놁뒿?덈떎.');
           }
 
           await client.query(
@@ -1551,20 +2328,20 @@ export function createPostgresRepositoryBundle({
           };
         });
       },
-      createInvitation: async ({ companyId, email, role, invitedByUserId }) => {
-        const normalizedEmail = String(email || '').trim().toLowerCase();
-        if (!normalizedEmail) {
-          throw new HttpError(422, 'INVITATION_EMAIL_REQUIRED', '초대 이메일을 입력해 주세요.');
-        }
+        createInvitation: async ({ companyId, email, role, invitedByUserId }) => {
+          const normalizedEmail = String(email || '').trim().toLowerCase();
+          if (!normalizedEmail) {
+            throw new HttpError(422, 'INVITATION_EMAIL_REQUIRED', '珥덈? ?대찓?쇱쓣 ?낅젰??二쇱꽭??');
+          }
         if (!['MANAGER', 'STAFF'].includes(role)) {
-          throw new HttpError(422, 'INVITATION_ROLE_INVALID', '초대 역할이 올바르지 않습니다.');
+          throw new HttpError(422, 'INVITATION_ROLE_INVALID', '珥덈? ??븷???щ컮瑜댁? ?딆뒿?덈떎.');
         }
 
         return withTransaction(pool, async (client) => {
           const companyResult = await client.query(`SELECT * FROM companies WHERE id = $1 LIMIT 1`, [companyId]);
           const company = normalizeRow(companyResult.rows[0] || null);
           if (!company) {
-            throw new HttpError(404, 'COMPANY_NOT_FOUND', '회사를 찾을 수 없습니다.');
+            throw new HttpError(404, 'COMPANY_NOT_FOUND', '?뚯궗瑜?李얠쓣 ???놁뒿?덈떎.');
           }
 
           const recentResult = await client.query(
@@ -1578,7 +2355,7 @@ export function createPostgresRepositoryBundle({
           );
           const recent = normalizeRow(recentResult.rows[0] || null);
           if (recent && Date.now() - new Date(recent.created_at).getTime() < 5 * 60 * 1000) {
-            throw new HttpError(429, 'INVITATION_RATE_LIMITED', '초대 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+            throw new HttpError(429, 'INVITATION_RATE_LIMITED', '珥덈? ?붿껌???덈Т 留롮뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭??');
           }
 
           const invitationToken = crypto.randomBytes(24).toString('base64url');
@@ -1619,21 +2396,122 @@ export function createPostgresRepositoryBundle({
             ]
           );
 
-          return {
-            id: invitation.id,
-            email: invitation.email,
-            role: invitation.role,
-            companyId: invitation.companyId,
-            companyName: invitation.companyName,
-            expiresAt: invitation.expiresAt,
-            invitationToken
-          };
-        });
-      },
-      listMembershipsByCompany: async (companyId) => {
-        const result = await pool.query(
-          `
-            SELECT memberships.id, memberships.role, memberships.status, memberships.joined_at,
+            return {
+              id: invitation.id,
+              email: invitation.email,
+              role: invitation.role,
+              companyId: invitation.companyId,
+              companyName: invitation.companyName,
+              expiresAt: invitation.expiresAt,
+              invitationToken
+            };
+          });
+        },
+        reissueInvitation: async ({ companyId, invitationId, invitedByUserId }) => {
+          return withTransaction(pool, async (client) => {
+            const invitationResult = await client.query(
+              `
+                SELECT invitations.*, companies.name AS company_name
+                FROM invitations
+                JOIN companies ON companies.id = invitations.company_id
+                WHERE invitations.id = $1 AND invitations.company_id = $2
+                LIMIT 1
+                FOR UPDATE
+              `,
+              [invitationId, companyId]
+            );
+            const invitation = normalizeRow(invitationResult.rows[0] || null);
+            if (!invitation) {
+              throw new HttpError(404, 'INVITATION_NOT_FOUND', '초대 정보를 찾을 수 없어요.');
+            }
+            if (invitation.status !== 'ISSUED') {
+              throw new HttpError(409, 'INVITATION_NOT_ACTIVE', '다시 보낼 수 있는 초대 상태가 아닙니다.');
+            }
+            if (Date.now() - new Date(invitation.last_sent_at).getTime() < 60 * 1000) {
+              throw new HttpError(429, 'INVITATION_RESEND_RATE_LIMITED', '방금 초대를 보냈습니다. 잠시 후 다시 시도해주세요.');
+            }
+
+            await client.query(`UPDATE invitations SET status = 'REVOKED' WHERE id = $1`, [invitation.id]);
+
+            const invitationToken = crypto.randomBytes(24).toString('base64url');
+            const nextInvitation = {
+              id: createRepositoryId('invite'),
+              companyId,
+              email: invitation.email,
+              role: invitation.role,
+              invitedByUserId: invitedByUserId || invitation.invited_by_user_id,
+              status: 'ISSUED',
+              tokenHash: sha256(invitationToken),
+              expiresAt: plusDays(7),
+              acceptedAt: null,
+              lastSentAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+              companyName: invitation.company_name
+            };
+
+            await client.query(
+              `
+                INSERT INTO invitations (
+                  id, company_id, email, role, invited_by_user_id, status, token_hash,
+                  expires_at, accepted_at, last_sent_at, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              `,
+              [
+                nextInvitation.id,
+                nextInvitation.companyId,
+                nextInvitation.email,
+                nextInvitation.role,
+                nextInvitation.invitedByUserId,
+                nextInvitation.status,
+                nextInvitation.tokenHash,
+                nextInvitation.expiresAt,
+                nextInvitation.acceptedAt,
+                nextInvitation.lastSentAt,
+                nextInvitation.createdAt
+              ]
+            );
+
+            return {
+              id: nextInvitation.id,
+              email: nextInvitation.email,
+              role: nextInvitation.role,
+              companyId: nextInvitation.companyId,
+              companyName: nextInvitation.companyName,
+              expiresAt: nextInvitation.expiresAt,
+              invitationToken
+            };
+          });
+        },
+        revokeInvitation: async ({ companyId, invitationId }) => {
+          return withTransaction(pool, async (client) => {
+            const result = await client.query(
+              `
+                SELECT *
+                FROM invitations
+                WHERE id = $1 AND company_id = $2
+                LIMIT 1
+                FOR UPDATE
+              `,
+              [invitationId, companyId]
+            );
+            const invitation = normalizeRow(result.rows[0] || null);
+            if (!invitation) {
+              throw new HttpError(404, 'INVITATION_NOT_FOUND', '초대 정보를 찾을 수 없어요.');
+            }
+            if (invitation.status === 'ACCEPTED') {
+              throw new HttpError(409, 'INVITATION_ALREADY_ACCEPTED', '이미 수락된 초대는 취소할 수 없습니다.');
+            }
+            if (invitation.status !== 'REVOKED') {
+              await client.query(`UPDATE invitations SET status = 'REVOKED' WHERE id = $1`, [invitation.id]);
+              invitation.status = 'REVOKED';
+            }
+            return mapInvitationRow(invitation);
+          });
+        },
+        listMembershipsByCompany: async (companyId) => {
+          const result = await pool.query(
+            `
+              SELECT memberships.id, memberships.role, memberships.status, memberships.joined_at,
                    users.email, users.display_name
             FROM memberships
             JOIN users ON users.id = memberships.user_id
@@ -1661,20 +2539,20 @@ export function createPostgresRepositoryBundle({
           `,
           [companyId]
         );
-        return normalizeRows(result.rows).map((item) => ({
-          id: item.id,
-          email: item.email,
-          role: item.role,
-          status: item.status,
-          expiresAt: item.expires_at,
-          acceptedAt: item.accepted_at,
-          lastSentAt: item.last_sent_at,
-          createdAt: item.created_at
-        }));
-      },
-      listCompaniesForUser: async (userId) => {
-        return (await listActiveMembershipRows(pool, userId)).map((row) => toCompanySummary(row));
-      }
+          return normalizeRows(result.rows).map((item) => ({
+            id: item.id,
+            email: item.email,
+            role: item.role,
+            status: item.status,
+            expiresAt: item.expires_at,
+            acceptedAt: item.accepted_at,
+            lastSentAt: item.last_sent_at,
+            createdAt: item.created_at
+          }));
+        },
+        listCompaniesForUser: async (userId) => {
+          return (await listActiveMembershipRows(pool, userId)).map((row) => toCompanySummary(row));
+        }
     },
     auditLogRepository: {
       append: async (entry) => {
@@ -1784,3 +2662,9 @@ export function createPostgresRepositoryBundle({
     }
   };
 }
+
+
+
+
+
+

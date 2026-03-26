@@ -5,11 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>다밋 운영 워크스페이스</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/logos/damit_icon_exact.svg" />
 </head>
 <body data-auth-mode="session">
   <div class="page-shell">
     <header class="hero">
       <div>
+        <div class="brand-lockup compact hero-brand-lockup">
+          <img class="brand-lockup-image compact" src="/logos/damit_default_exact.svg" alt="DAMIT 로고" />
+        </div>
         <p class="eyebrow">DAMIT WORKSPACE</p>
         <h1>다밋 운영 워크스페이스</h1>
         <p class="hero-copy">
@@ -28,11 +32,11 @@
     </header>
 
     <section class="workflow-banner" aria-label="운영 흐름">
-      <div class="flow-chip active">1. 현장 문제 기록</div>
-      <div class="flow-chip">2. 작업 건 연결</div>
-      <div class="flow-chip">3. 변경 견적 정리</div>
-      <div class="flow-chip">4. 고객 설명 준비</div>
-      <div class="flow-chip">5. 합의와 확인 기록</div>
+      <div class="flow-chip active" data-step="capture">1. 현장 기록</div>
+      <div class="flow-chip" data-step="link">2. 작업 건 연결</div>
+      <div class="flow-chip" data-step="quote">3. 변경 견적 정리</div>
+      <div class="flow-chip" data-step="draft">4. 고객 설명 준비</div>
+      <div class="flow-chip" data-step="confirm">5. 합의와 확인 기록</div>
     </section>
 
     <section class="workspace-meta" aria-label="운영 상태">
@@ -42,6 +46,36 @@
         <span class="meta-pill" id="counts-badge">건수 정보 확인 중</span>
       </div>
       <p class="workspace-tip" id="workspace-tip">운영 상태를 불러오면 현재 작업 규모와 저장 엔진을 여기서 바로 확인할 수 있습니다.</p>
+    </section>
+
+    <section class="workspace-signal-board" aria-label="운영 안내">
+      <article class="workspace-signal-card workspace-signal-card-strong">
+        <span class="workspace-signal-label">현재 우선순위</span>
+        <strong id="workspace-next-step">현장 사진과 사유를 먼저 기록하세요</strong>
+        <p id="workspace-next-step-copy">저장된 현장 기록이 없으면 나머지 흐름이 이어지지 않습니다. 사진과 사유를 먼저 남기는 것이 가장 중요합니다.</p>
+      </article>
+      <article class="workspace-signal-card">
+        <span class="workspace-signal-label">운영 상태 요약</span>
+        <strong id="workspace-state-summary">작업 규모를 불러오는 중입니다</strong>
+        <p id="workspace-state-copy">런타임과 저장된 작업 건 수를 바탕으로, 지금 이 워크스페이스에서 바로 처리할 수 있는 범위를 설명합니다.</p>
+      </article>
+      <article class="workspace-signal-card">
+        <span class="workspace-signal-label">선택된 작업 건</span>
+        <strong id="workspace-selection-summary">아직 선택된 작업 건이 없습니다</strong>
+        <p id="workspace-selection-copy">가운데 목록에서 작업 건을 선택하면 현재 상태와 다음 액션을 여기서 요약합니다.</p>
+      </article>
+    </section>
+    <section class="workspace-priority-strip" aria-label="지금 바로 할 일">
+      <div class="workspace-priority-header">
+        <span class="workspace-priority-kicker">Next Actions</span>
+        <strong>지금 바로 할 일</strong>
+      </div>
+      <div id="workspace-priority-list" class="workspace-priority-list">
+        <article class="workspace-priority-item is-active">
+          <strong>현장 사진과 사유를 먼저 남겨 주세요</strong>
+          <p>첫 기록이 저장되면 작업 건 연결과 견적 정리 흐름이 자연스럽게 이어집니다.</p>
+        </article>
+      </div>
     </section>
 
     <main class="workspace">
@@ -194,6 +228,41 @@
         </div>
 
         <div id="detail-content" class="stack hidden">
+          <section class="ops-return-card hidden" id="ops-return-card">
+            <div class="ops-return-topline">
+              <span class="workspace-signal-label">Ops Handoff</span>
+              <span id="ops-return-badge" class="ops-badge tone-neutral">연결됨</span>
+            </div>
+            <strong id="ops-return-title">운영 콘솔에서 이어진 작업 건입니다.</strong>
+            <p id="ops-return-why" class="ops-return-why">지금 먼저 보는 이유를 여기서 짧게 안내합니다.</p>
+            <p id="ops-return-copy">이 작업 건이 운영 신호와 연결된 이유, 그리고 지금 먼저 볼 카드가 무엇인지 여기서 바로 안내합니다.</p>
+            <div class="ops-return-meta" id="ops-return-meta"></div>
+            <div class="ops-return-steps" id="ops-return-steps"></div>
+            <div class="ops-return-actions">
+              <button type="button" class="primary-button" id="ops-return-action">이 카드 먼저 보기</button>
+              <a class="ghost-button landing-action" href="/ops">운영 콘솔로 돌아가기</a>
+            </div>
+          </section>
+
+          <section class="case-focus-card" id="case-focus-card">
+            <div class="case-focus-topline">
+              <span class="case-focus-label">현재 단계와 다음 액션</span>
+              <span id="case-focus-stage" class="ops-badge tone-neutral">미선택</span>
+            </div>
+            <strong id="case-focus-title">작업 건을 선택하면 현재 집중 포인트를 보여줍니다.</strong>
+            <p id="case-focus-copy">지금 단계에서 무엇을 먼저 해야 하는지 이 카드에서 한 줄로 정리합니다.</p>
+          </section>
+
+          <section class="card case-progress-card" id="case-progress-card">
+            <div class="card-header">
+              <div>
+                <h3>현재 진행 단계</h3>
+                <p class="helper-text" id="case-progress-copy">선택한 작업 건이 어디까지 진행됐는지 단계별로 보여줍니다.</p>
+              </div>
+            </div>
+            <div class="case-progress-list" id="case-progress-list"></div>
+          </section>
+
           <section class="card-grid" id="detail-summary">
             <article class="metric-card">
               <span>원래 견적</span>
@@ -253,7 +322,11 @@
 
           <section class="card" id="customer-confirm-card">
             <div class="card-header draft-actions">
-              <h3>고객 확인 링크</h3>
+              <div>
+                <h3>고객 확인 링크</h3>
+                <p class="helper-text">고객 열람과 확인 완료 상태를 같은 카드에서 추적합니다.</p>
+              </div>
+              <span id="customer-confirm-badge" class="ops-badge tone-neutral">준비 중</span>
               <div class="action-group">
                 <a id="open-confirm-link" class="ghost-button hidden" href="#" target="_blank" rel="noreferrer">링크 열기</a>
                 <button id="copy-confirm-link" class="ghost-button" type="button">링크 복사</button>
@@ -266,6 +339,7 @@
               <input type="text" id="customer-confirm-url" readonly placeholder="아직 발급된 링크가 없습니다." />
             </label>
             <p id="customer-confirm-meta" class="helper-text">고객이 링크를 열거나 확인을 남기면 여기와 타임라인에 반영됩니다.</p>
+            <p id="customer-confirm-guidance" class="helper-text copy-hint-strong">링크를 발급한 뒤에는 고객이 열람했는지와 확인 완료까지 왔는지를 이 카드와 타임라인에서 함께 확인합니다.</p>
           </section>
 
           <section class="card" id="agreement-card">
@@ -310,6 +384,7 @@
                 <textarea id="customerResponseNote" rows="3" placeholder="예: 추가 범위 설명 후 바로 진행 동의를 받음"></textarea>
               </label>
               <p class="helper-text">합의 상태, 채널, 금액, 메모를 함께 남기면 나중에 다시 보기가 쉬워집니다.</p>
+              <p class="helper-text" id="agreement-stage-note">합의 상태, 채널, 금액, 메모를 함께 남기면 나중에 다시 보기 쉽습니다.</p>
               <button type="submit" class="primary-button" id="save-agreement">합의 기록 저장</button>
             </form>
           </section>
@@ -323,9 +398,15 @@
 
           <section class="card" id="timeline-card">
             <div class="card-header">
-              <h3>타임라인</h3>
+              <div>
+                <h3>타임라인</h3>
+                <p class="helper-text" id="timeline-summary-copy">최근 작업 흐름과 확인 흔적을 시간순으로 보여줍니다.</p>
+              </div>
+              <span class="status-badge neutral" id="timeline-count-badge">0건</span>
             </div>
-            <div id="timeline" class="timeline"></div>
+            <div class="timeline-rail" id="timeline-rail">
+              <div id="timeline" class="timeline"></div>
+            </div>
           </section>
 
           <div class="detail-tail-spacer" aria-hidden="true"></div>
@@ -339,3 +420,5 @@
   <script type="module" src="/app.js"></script>
 </body>
 </html>
+
+

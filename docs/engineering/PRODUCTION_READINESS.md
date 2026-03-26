@@ -144,3 +144,141 @@ Keep append-only traces for:
 - staging Postgres runtime proof remains `HOLD`
 - production cutover remains `HOLD`
 - next local-facing work should optimize demo quality and encoding-safe UX polish, not broaden infra claims
+
+## Latest PM single-node note
+
+- self-host SQLite now boots with core, auth, and customer confirmation tables provisioned
+- PM judgment: `single-node operational runtime GO`
+- public production cutover remains separate and still requires broader infra and recovery evidence
+
+
+## Latest PM auth hardening note
+
+- operational auth phase 2 is now complete locally
+- production-like mode can require trusted same-origin browser writes through `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
+- login and invitation flows now read as real email-delivery flows rather than debug-link-first flows
+- live Resend proof still depends on environment credentials and remains a separate operational check
+
+
+## Latest PM ops readiness note
+
+- /ops now exposes explicit mail/auth operational readiness signals
+- operators can see preview mail mode, debug-link exposure, trusted-origin enforcement, and real-mail config gaps without reading environment files
+- this does not replace live Resend proof, but it reduces ambiguity before mail cutover
+
+
+## Latest PM real-mail note
+
+- real mail smoke now has a dedicated ignored local env path: `.env.production.local`
+- the production-like smoke command is `npm run smoke:mail:production-local`
+- live Resend proof still depends on real credentials and a manual inbox confirmation step
+## Latest PM mail hold note
+
+- email login cutover is still `HOLD`
+- the remaining blocker is verified sender-domain setup, not a known code defect
+- until a verified domain exists, the product should treat real mail as an operational dependency that is prepared but not yet cut over
+
+## Latest PM account surfaces note
+
+- the next product-facing maturity step is not more infrastructure, but clearer account surfaces
+- `login`, `start/signup`, `owner account`, and `system admin` must be treated as separate surfaces
+- near-term priority is:
+  - make signup explicit as a first-login onboarding path
+  - add an owner-facing account page
+  - keep system admin as a later, separate internal surface
+
+## Latest PM account surfaces phase 1 note
+
+- `start`, `account`, and `admin` now exist as first-class product surfaces
+- `/home` now links into `/account` and conditionally exposes `/admin`
+- `system admin` is separated from owner-company operations instead of being mixed into `/ops`
+- phase 1 is `GO`
+- next maturity step is visual QA plus deeper owner/admin behavior, not more surface proliferation
+
+## Latest PM account surfaces phase 2 note
+
+- `/account` now supports the first real owner action: sending team invitations
+- invitation delivery result and current onboarding state stay on the same page
+- non-owner roles remain read-only on invitation management
+- system admin remains intentionally observational while owner account operations get stronger
+
+## Latest PM account surfaces phase 3 note
+
+- `/account` now supports owner self-service actions instead of staying summary-only
+- profile editing is available for display name and phone number
+- owner invitation flows now include resend and revoke actions
+- `/admin` still remains read-only while account and owner operations continue to mature
+
+## Latest PM account surfaces phase 5 note
+
+- `/account` now frames session security as an operational surface, not just a settings page
+- recent login-link activity is visible on the account surface itself
+- recent owner account actions are now visible without leaving the page
+- `/admin` gained its first safe action via read-only dataset export
+
+## Latest PM account surfaces phase 6 note
+
+- `/account` now separates active owner work from closed history
+- pending invitations stay visible, while closed invitation history is collapsed by default
+- ended sessions now move into a history block so live session review stays faster
+- a new attention strip highlights the few items that actually need review right now
+
+## Latest PM account surfaces phase 7 note
+
+- authenticated mobile visual review for `/account` is now part of the quality gate
+- account history summaries stack cleanly on narrow screens
+- mobile spacing is tighter and more consistent without losing the operational hierarchy
+
+## Latest PM account surfaces phase 8 note
+
+- invitation and session lifecycle copy is now shorter and more explicit
+- closed states read as done, while risky live states read as actionable
+- the account surface is getting closer to true operational wording, not settings-page wording
+
+## Latest PM admin surfaces phase 3 note
+
+- `/admin` now reads more clearly as a constrained, read-only internal surface
+- the explorer explains the currently selected dataset before showing the raw table
+- authenticated mobile visual review now covers the admin surface too
+
+## Latest PM ops/app continuity note
+
+- `/ops` now recommends concrete next destinations into `/app` or `/account`
+- `/app` accepts selected-case deep links from `/ops` so the operator lands on the relevant job case immediately
+- authenticated mobile visual review now covers the `/ops` handoff state, so operational continuity is checked on both desktop and mobile
+
+## Latest PM app return-context note
+
+- `/app` now preserves operational intent after an `/ops` handoff instead of showing only a generic selected-case summary
+- handoff context is visible before the normal case-focus card and points to the first recommended checkpoint
+- the cross-surface operator flow is now evidence-backed on both `/ops` and `/app`
+
+## Latest PM Cloudflare operations note
+
+- the recommended public-facing operating model is now `Cloudflare + home server + external stateful services`
+- keep the Ubuntu home server for cheap compute while traffic is still small
+- put the public domain and ingress on Cloudflare, using Cloudflare Tunnel instead of raw router port-forwarding
+- keep SSH and operator maintenance on Tailscale
+- move the primary database to managed Postgres before broad public beta
+- move uploads and backup bundles toward object storage after that
+- keep a single canonical product origin first, because the current auth/session model is simplest on one host
+
+## Latest PM domain rollout note
+
+- `damit.kr` is now the chosen canonical brand domain
+- the safe promotion path is `preview.damit.kr` first, then the root domain
+- Cloudflare Tunnel hostnames should be created in the Cloudflare dashboard, while the Ubuntu server now has helper scripts for origin switching and public-host smoke checks
+- SSH and maintenance stay on Tailscale even after the public hostname is introduced
+
+## Latest PM ops/app warning-copy note
+
+- warning cards on `/ops` and `/app` now use shorter decision-first wording
+- viewed confirmations, quote gaps, draft gaps, and on-hold states are easier to distinguish at a glance
+- this batch changed wording only and kept the workflow logic intact
+
+## Latest PM ops/app risk-focus note
+
+- `/ops` now isolates the first risk-bearing route in a dedicated focus card before secondary routes
+- `/app` now explains why the selected case was prioritized, not just which card to open
+- the cross-surface operator flow now makes urgency easier to understand in one short scan
+

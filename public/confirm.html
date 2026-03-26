@@ -3,40 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>고객 확인 링크</title>
+  <title>다밋 | 고객 확인</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/logos/damit_icon_exact.svg" />
 </head>
 <body class="confirm-page">
   <div class="page-shell confirm-shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">FIELD AGREEMENT ASSISTANT</p>
-        <h1>추가 작업 설명 확인</h1>
-        <p class="hero-copy" id="confirm-hero-copy">현장 설명과 변경 금액을 확인하는 중입니다.</p>
+    <header class="confirm-ledger-header">
+      <div class="brand-lockup">
+        <img class="brand-lockup-image" src="/logos/damit_default_exact.svg" alt="DAMIT 로고" />
       </div>
-      <aside class="hero-card">
-        <h2>안내</h2>
-        <ul>
-          <li>로그인 없이 확인할 수 있습니다</li>
-          <li>열람과 확인 시각이 기록됩니다</li>
-          <li>추가 문의는 작업 담당자에게 바로 전달해주세요</li>
-        </ul>
-      </aside>
+      <div class="confirm-ledger-meta">
+        <span class="ops-inline-note">Operation Verification</span>
+        <span class="ops-inline-note">로그인 없이 확인 가능</span>
+      </div>
     </header>
 
-    <main class="workspace confirm-workspace">
-      <section class="panel panel-detail confirm-panel">
+    <section class="confirm-ledger-hero">
+      <div class="confirm-ledger-copy">
+        <p class="panel-kicker">Confirmation Document</p>
+        <h1>추가 작업 안내 확인</h1>
+        <p class="hero-copy" id="confirm-hero-copy">현장에서 확인한 추가 작업과 변경 금액, 담당자 안내 문장을 확인하는 화면입니다.</p>
+      </div>
+      <aside class="confirm-ledger-aside">
+        <strong>이 화면에서 하는 일</strong>
+        <ul>
+          <li>추가 작업 이유와 변경 금액을 확인합니다</li>
+          <li>현장 사진과 안내 문장을 읽습니다</li>
+          <li>마지막에 확인 완료 기록만 남깁니다</li>
+        </ul>
+      </aside>
+    </section>
+
+    <main class="confirm-layout">
+      <section class="panel confirm-panel">
         <div id="confirm-feedback" class="feedback" aria-live="polite"></div>
 
-        <div class="card stack" id="confirm-summary-card">
-          <div class="panel-header">
-            <div>
-              <p class="panel-kicker">확인 대상</p>
-              <h2 id="confirm-title">로딩 중...</h2>
-            </div>
+        <section class="confirm-state-banner" id="confirm-state-banner">
+          <span id="confirm-state-badge" class="ops-badge tone-neutral">확인 전</span>
+          <div>
+            <strong id="confirm-state-title">내용을 확인하는 중입니다.</strong>
+            <p id="confirm-state-copy">추가 작업 사유와 변경 금액을 먼저 읽고, 마지막에 확인 완료를 눌러 주세요.</p>
+          </div>
+        </section>
+
+        <section class="card stack confirm-document-card" id="confirm-summary-card">
+          <div class="confirm-document-topline">
+            <span class="panel-kicker">Summary</span>
             <span class="status-badge neutral" id="confirm-status">대기</span>
           </div>
-          <div class="card-grid">
+          <div>
+            <h2 id="confirm-title">불러오는 중입니다</h2>
+            <p class="helper-text" id="confirm-meta">링크 상태를 불러오는 중입니다.</p>
+          </div>
+          <div class="card-grid confirm-summary-grid">
             <article class="metric-card">
               <span>원래 견적</span>
               <strong id="confirm-original">-</strong>
@@ -50,12 +70,16 @@
               <strong id="confirm-delta">-</strong>
             </article>
           </div>
-          <p class="helper-text" id="confirm-meta">링크 상태를 확인하는 중입니다.</p>
-        </div>
+        </section>
 
-        <section class="card" id="confirm-scope-card">
-          <div class="card-header"><h3>변경 사유와 범위</h3></div>
-          <div class="scope-grid">
+        <section class="card confirm-card-cluster confirm-document-card" id="confirm-scope-card">
+          <div class="card-header">
+            <div>
+              <p class="panel-kicker">Scope</p>
+              <h3>변경 사유와 범위</h3>
+            </div>
+          </div>
+          <div class="scope-grid confirm-scope-grid">
             <div class="scope-card">
               <h4>기본 포함 범위</h4>
               <p id="confirm-scope-base">-</p>
@@ -68,26 +92,42 @@
           <p class="helper-text" id="confirm-scope-reason"></p>
         </section>
 
-        <section class="card" id="confirm-draft-card">
-          <div class="card-header"><h3>안내 메시지</h3></div>
+        <section class="card confirm-card-cluster confirm-document-card" id="confirm-draft-card">
+          <div class="card-header">
+            <div>
+              <p class="panel-kicker">Owner Message</p>
+              <h3>담당자 안내 문장</h3>
+            </div>
+          </div>
           <p class="draft-box" id="confirm-draft-body">-</p>
         </section>
 
-        <section class="card" id="confirm-photos-card">
-          <div class="card-header"><h3>현장 사진</h3></div>
+        <section class="card confirm-card-cluster confirm-document-card" id="confirm-photos-card">
+          <div class="card-header">
+            <div>
+              <p class="panel-kicker">Evidence</p>
+              <h3>현장 사진</h3>
+            </div>
+          </div>
           <div id="confirm-photos" class="record-photos"></div>
         </section>
 
-        <section class="card" id="confirm-ack-card">
-          <div class="card-header"><h3>내용 확인 남기기</h3></div>
+        <section class="card confirm-card-cluster confirm-action-card" id="confirm-ack-card">
+          <div class="card-header">
+            <div>
+              <p class="panel-kicker">Final Action</p>
+              <h3>내용 확인 남기기</h3>
+              <p class="helper-text">이 버튼은 내용 확인 기록용입니다. 최종 진행 여부와 세부 협의는 담당자와 이어서 정리합니다.</p>
+            </div>
+          </div>
           <form id="confirm-ack-form" class="stack">
             <label class="field">
               <span>확인 메모</span>
-              <textarea id="confirmation-note" rows="4" maxlength="300" placeholder="예: 추가 작업 내용 확인했습니다"></textarea>
+              <textarea id="confirmation-note" rows="4" maxlength="300" placeholder="예: 추가 작업 내용 확인했습니다. 연락 부탁드립니다."></textarea>
             </label>
-            <button type="submit" class="primary-button" id="confirm-submit">내용 확인 완료</button>
+            <button type="submit" class="primary-button action-emphasis" id="confirm-submit">내용 확인 완료</button>
           </form>
-          <p class="helper-text">확인을 누르면 열람/확인 시각이 기록됩니다. 금액 동의나 진행 방식은 담당자와 최종 상의해주세요.</p>
+          <p class="helper-text" id="confirm-ack-help">확인 완료 후에는 버튼이 비활성화되고, 기록 시각이 화면에 바로 반영됩니다.</p>
         </section>
       </section>
     </main>

@@ -5,14 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>다밋 운영 콘솔</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/logos/damit_icon_exact.svg" />
 </head>
 <body class="ops-body" data-auth-mode="session">
   <div class="ops-shell">
     <header class="ops-hero">
       <div>
+        <div class="brand-lockup compact hero-brand-lockup">
+          <img class="brand-lockup-image compact" src="/logos/damit_default_exact.svg" alt="DAMIT 로고" />
+        </div>
         <p class="eyebrow">DAMIT OPS</p>
-        <h1>운영 콘솔</h1>
-        <p class="ops-copy">현재 상태, 저장소 정보, 최근 백업, 배포 버전을 한 곳에서 확인하는 owner 전용 운영 화면입니다.</p>
+        <h1>운영 대시보드</h1>
+        <p class="ops-copy">서비스 상태, 합의 흐름, 고객 확인, 로그인 전달, 세션 상태까지 한 화면에서 읽는 owner 전용 운영 화면입니다.</p>
       </div>
       <div class="ops-actions-top">
         <a class="ghost-button" href="/app">작업 화면</a>
@@ -20,25 +24,104 @@
       </div>
     </header>
 
-    <section class="ops-grid">
-      <article class="ops-card">
+    <section class="ops-verdict-panel">
+      <div class="ops-verdict-topline">
+        <span id="ops-verdict-badge" class="ops-badge tone-neutral">확인 중</span>
+        <span id="ops-generated-at" class="ops-timestamp">운영 스냅샷을 불러오는 중입니다.</span>
+      </div>
+      <div class="ops-verdict-copyblock">
+        <h2 id="ops-verdict-title">현재 운영 상태를 확인하는 중입니다.</h2>
+        <p id="ops-verdict-copy">헬스 체크와 운영 스냅샷을 불러오면, 지금 주의할 항목과 바로 할 수 있는 운영 액션을 여기에 보여줍니다.</p>
+      </div>
+    </section>
+    <section class="ops-panel ops-priority-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Priority</p>
+          <h2>지금 바로 할 일</h2>
+        </div>
+        <span id="ops-priority-summary" class="ops-inline-note">정리 중</span>
+      </div>
+      <div id="ops-priority-list" class="ops-priority-list">
+        <div class="empty-state">운영 우선순위를 계산하는 중입니다.</div>
+      </div>
+    </section>
+
+    <section class="ops-panel ops-handoff-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Next Route</p>
+          <h2>운영에서 바로 이어가기</h2>
+        </div>
+        <span id="ops-handoff-summary" class="ops-inline-note">정리 중</span>
+      </div>
+      <p id="ops-handoff-copy" class="helper-text ops-panel-copy">운영 신호를 본 뒤 바로 열어볼 작업 건과 화면을 여기서 추천합니다.</p>
+      <div id="ops-handoff-focus" class="ops-handoff-focus hidden"></div>
+      <div id="ops-handoff-list" class="ops-handoff-list">
+        <div class="empty-state">운영에서 이어갈 작업 경로를 계산하는 중입니다.</div>
+      </div>
+    </section>
+
+    <section class="ops-grid ops-grid-4">
+      <article class="ops-card ops-card-emphasis">
         <span class="ops-card-label">서비스 상태</span>
         <strong id="ops-health-status">확인 중</strong>
         <p id="ops-health-meta" class="helper-text">health endpoint 응답을 기다리고 있습니다.</p>
       </article>
       <article class="ops-card">
-        <span class="ops-card-label">저장소</span>
+        <span class="ops-card-label">최신 백업</span>
+        <strong id="ops-backup-status">확인 중</strong>
+        <p id="ops-backup-meta" class="helper-text">최근 백업 상태를 계산하는 중입니다.</p>
+      </article>
+      <article class="ops-card">
+        <span class="ops-card-label">배포 버전</span>
+        <strong id="ops-release-status">확인 중</strong>
+        <p id="ops-release-meta" class="helper-text">현재 배포 버전 메타데이터를 불러오는 중입니다.</p>
+      </article>
+      <article class="ops-card">
+        <span class="ops-card-label">저장 모드</span>
         <strong id="ops-storage-engine">확인 중</strong>
         <p id="ops-storage-meta" class="helper-text">storage summary 응답을 기다리고 있습니다.</p>
       </article>
-      <article class="ops-card">
-        <span class="ops-card-label">런타임</span>
-        <strong id="ops-runtime-mode">확인 중</strong>
-        <p id="ops-runtime-meta" class="helper-text">runtime metadata 응답을 기다리고 있습니다.</p>
+    </section>
+
+    <section class="ops-panel ops-alert-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Attention</p>
+          <h2>운영 체크 포인트</h2>
+        </div>
+        <span id="ops-alert-summary" class="ops-inline-note">점검 중</span>
+      </div>
+      <div id="ops-alerts" class="ops-alert-list">
+        <div class="empty-state">운영 주의 항목을 계산하는 중입니다.</div>
+      </div>
+    </section>
+
+    <section class="ops-grid ops-grid-4 ops-signal-grid">
+      <article class="ops-card ops-flow-card">
+        <span class="ops-card-label">합의 흐름</span>
+        <strong id="ops-agreement-signal-status">확인 중</strong>
+        <p id="ops-agreement-signal-meta" class="helper-text">최근 합의 신호를 계산하는 중입니다.</p>
+      </article>
+      <article class="ops-card ops-flow-card">
+        <span class="ops-card-label">고객 확인</span>
+        <strong id="ops-confirmation-signal-status">확인 중</strong>
+        <p id="ops-confirmation-signal-meta" class="helper-text">고객 확인 링크 흐름을 계산하는 중입니다.</p>
+      </article>
+      <article class="ops-card ops-flow-card">
+        <span class="ops-card-label">최근 타임라인</span>
+        <strong id="ops-timeline-signal-status">확인 중</strong>
+        <p id="ops-timeline-signal-meta" class="helper-text">최근 작업 이력 흐름을 계산하는 중입니다.</p>
+      </article>
+      <article class="ops-card ops-flow-card">
+        <span class="ops-card-label">로그인/세션</span>
+        <strong id="ops-auth-signal-status">확인 중</strong>
+        <p id="ops-auth-signal-meta" class="helper-text">로그인 링크 전달과 세션 상태를 계산하는 중입니다.</p>
       </article>
     </section>
 
-    <section class="ops-layout">
+    <section class="ops-layout ops-layout-wide">
       <section class="ops-panel">
         <div class="panel-header">
           <div>
@@ -47,6 +130,7 @@
           </div>
           <button type="button" class="ghost-button" id="ops-refresh">새로고침</button>
         </div>
+        <p class="helper-text ops-panel-copy">여기서는 읽기 중심 운영 흐름을 유지합니다. 현재 열려 있는 액션은 스냅샷 새로고침과 수동 백업 생성만 제공합니다.</p>
         <form id="ops-backup-form" class="stack">
           <label class="field">
             <span>백업 이름</span>
@@ -70,24 +154,100 @@
           <div><dt>작업 건 수</dt><dd>확인 중</dd></div>
           <div><dt>현장 기록 수</dt><dd>확인 중</dd></div>
           <div><dt>합의 기록 수</dt><dd>확인 중</dd></div>
+          <div><dt>활성 세션 수</dt><dd>확인 중</dd></div>
+          <div><dt>최근 로그인 전달</dt><dd>확인 중</dd></div>
           <div><dt>배포 버전</dt><dd>확인 중</dd></div>
         </dl>
       </section>
     </section>
 
-    <section class="ops-panel">
+    <section class="ops-grid ops-grid-3 ops-activity-grid">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Customer Confirmation</p>
+            <h2>최근 고객 확인</h2>
+          </div>
+        </div>
+        <div id="ops-confirmations" class="ops-activity-list">
+          <div class="empty-state">표시할 고객 확인 흐름이 없습니다.</div>
+        </div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Timeline</p>
+            <h2>최근 작업 이력</h2>
+          </div>
+        </div>
+        <div id="ops-timeline-events" class="ops-activity-list">
+          <div class="empty-state">표시할 최근 작업 이력이 없습니다.</div>
+        </div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Auth Delivery</p>
+            <h2>최근 로그인 전달</h2>
+          </div>
+        </div>
+        <div id="ops-auth-activity" class="ops-activity-list">
+          <div class="empty-state">표시할 최근 로그인 요청이 없습니다.</div>
+        </div>
+      </section>
+    </section>
+
+    <section class="ops-panel ops-data-explorer">
       <div class="panel-header">
         <div>
-          <p class="panel-kicker">Backups</p>
-          <h2>최근 백업</h2>
+          <p class="panel-kicker">Data Explorer</p>
+          <h2>운영 데이터 탐색</h2>
         </div>
+        <span id="ops-explorer-generated-at" class="ops-inline-note">불러오는 중</span>
       </div>
-      <div id="ops-backups" class="ops-backup-list">
-        <div class="empty-state">아직 생성된 백업이 없습니다.</div>
+      <p id="ops-explorer-description" class="helper-text ops-panel-copy">핵심 운영 테이블을 읽기 전용으로 빠르게 확인할 수 있는 탐색 화면입니다.</p>
+      <div id="ops-explorer-datasets" class="ops-dataset-switcher">
+        <div class="empty-state">데이터셋을 불러오는 중입니다.</div>
       </div>
+      <div class="ops-explorer-meta">
+        <strong id="ops-explorer-selected-label">선택된 데이터 없음</strong>
+        <span id="ops-explorer-selected-count" class="ops-inline-note">-</span>
+      </div>
+      <div id="ops-explorer-table" class="ops-data-table-wrap">
+        <div class="empty-state">행 데이터를 불러오는 중입니다.</div>
+      </div>
+    </section>
+
+    <section class="ops-layout ops-layout-wide ops-bottom-layout">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Recent Activity</p>
+            <h2>최근 운영 활동</h2>
+          </div>
+        </div>
+        <div id="ops-activity" class="ops-activity-list">
+          <div class="empty-state">표시할 최근 운영 활동이 없습니다.</div>
+        </div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Backups</p>
+            <h2>최근 백업</h2>
+          </div>
+        </div>
+        <div id="ops-backups" class="ops-backup-list">
+          <div class="empty-state">아직 생성된 백업이 없습니다.</div>
+        </div>
+      </section>
     </section>
   </div>
 
   <script type="module" src="/ops.js"></script>
 </body>
 </html>
+

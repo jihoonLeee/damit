@@ -75,6 +75,24 @@ function createStatefulAuthPool() {
       return { rows: [] };
     }
 
+    if (normalizedSql.includes("UPDATE login_challenges SET status = 'SUPERSEDED' WHERE email = $1 AND status = 'ISSUED'")) {
+      state.loginChallenges
+        .filter((item) => item.email === params[0] && item.status === "ISSUED")
+        .forEach((item) => {
+          item.status = "SUPERSEDED";
+        });
+      return { rows: [] };
+    }
+
+    if (normalizedSql.includes("UPDATE login_challenges SET delivery_provider = $1, delivery_status = $2 WHERE id = $3")) {
+      const row = state.loginChallenges.find((item) => item.id === params[2]);
+      if (row) {
+        row.delivery_provider = params[0];
+        row.delivery_status = params[1];
+      }
+      return { rows: [] };
+    }
+
     if (normalizedSql.includes("INSERT INTO login_challenges (")) {
       const row = {
         id: params[0],
@@ -273,6 +291,14 @@ function createStatefulAuthPool() {
       return { rows: row ? [{ ...row }] : [] };
     }
 
+    if (normalizedSql.includes("UPDATE sessions SET last_seen_at = $1 WHERE id = $2")) {
+      const row = state.sessions.find((item) => item.id === params[1]);
+      if (row) {
+        row.last_seen_at = params[0];
+      }
+      return { rows: [] };
+    }
+
     if (normalizedSql.includes("UPDATE sessions SET last_seen_at = $1, refresh_token_hash = $2 WHERE id = $3")) {
       const row = state.sessions.find((item) => item.id === params[2]);
       if (row) {
@@ -384,20 +410,20 @@ test("postgres auth repository supports login, refresh, invitations, and company
   const ownerOneVerified = await bundle.authRepository.verifyChallenge({
     challengeId: ownerOneChallenge.id,
     token: ownerOneToken,
-    displayName: "¿À³Ê¿ø",
-    companyName: "´Ù¹Ô Å¬¸° 1È£Á¡"
+    displayName: "ï¿½ï¿½ï¿½Ê¿ï¿½",
+    companyName: "ï¿½Ù¹ï¿½ Å¬ï¿½ï¿½ 1È£ï¿½ï¿½"
   });
 
   assert.equal(ownerOneVerified.user.email, "owner-one@example.com");
-  assert.equal(ownerOneVerified.company.name, "´Ù¹Ô Å¬¸° 1È£Á¡");
+  assert.equal(ownerOneVerified.company.name, "ï¿½Ù¹ï¿½ Å¬ï¿½ï¿½ 1È£ï¿½ï¿½");
   assert.equal(ownerOneVerified.company.role, "OWNER");
 
   const ownerOneSession = await bundle.authRepository.getSessionContext(ownerOneVerified.sessionId);
-  assert.equal(ownerOneSession.companyName, "´Ù¹Ô Å¬¸° 1È£Á¡");
+  assert.equal(ownerOneSession.companyName, "ï¿½Ù¹ï¿½ Å¬ï¿½ï¿½ 1È£ï¿½ï¿½");
   assert.equal(ownerOneSession.companies.length, 1);
 
   const refreshed = await bundle.authRepository.refreshSessionByRefreshToken(ownerOneVerified.refreshToken);
-  assert.equal(refreshed.company.name, "´Ù¹Ô Å¬¸° 1È£Á¡");
+  assert.equal(refreshed.company.name, "ï¿½Ù¹ï¿½ Å¬ï¿½ï¿½ 1È£ï¿½ï¿½");
   assert.notEqual(refreshed.refreshToken, ownerOneVerified.refreshToken);
 
   const ownerTwoToken = "token-owner-two";
@@ -411,8 +437,8 @@ test("postgres auth repository supports login, refresh, invitations, and company
   const ownerTwoVerified = await bundle.authRepository.verifyChallenge({
     challengeId: ownerTwoChallenge.id,
     token: ownerTwoToken,
-    displayName: "¿À³ÊÅõ",
-    companyName: "´Ù¹Ô Å¬¸° 2È£Á¡"
+    displayName: "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½",
+    companyName: "ï¿½Ù¹ï¿½ Å¬ï¿½ï¿½ 2È£ï¿½ï¿½"
   });
 
   const invite = await bundle.authRepository.createInvitation({
@@ -421,7 +447,7 @@ test("postgres auth repository supports login, refresh, invitations, and company
     role: "MANAGER",
     invitedByUserId: ownerTwoVerified.user.id
   });
-  assert.equal(invite.companyName, "´Ù¹Ô Å¬¸° 2È£Á¡");
+  assert.equal(invite.companyName, "ï¿½Ù¹ï¿½ Å¬ï¿½ï¿½ 2È£ï¿½ï¿½");
 
   const inviteList = await bundle.authRepository.listInvitationsByCompany(ownerTwoVerified.company.id);
   assert.equal(inviteList.length, 1);

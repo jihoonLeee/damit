@@ -3,7 +3,7 @@ import path from "node:path";
 import { createReadStream } from "node:fs";
 
 import { config } from "../config.js";
-import { notFound } from "../http.js";
+import { buildStandardHeaders, notFound } from "../http.js";
 import { resolveLocalUploadPath } from "../object-storage/createObjectStorage.js";
 
 const mimeTypes = {
@@ -21,10 +21,13 @@ const mimeTypes = {
 const publicRouteMap = new Map([
   ["/", "landing.html"],
   ["/landing", "landing.html"],
+  ["/start", "start.html"],
   ["/login", "login.html"],
   ["/home", "home.html"],
+  ["/account", "account.html"],
   ["/app", "index.html"],
-  ["/ops", "ops.html"]
+  ["/ops", "ops.html"],
+  ["/admin", "admin.html"]
 ]);
 
 export function normalizePathname(urlValue) {
@@ -66,9 +69,7 @@ async function serveFile(response, filePath) {
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    response.writeHead(200, {
-      "Content-Type": mimeTypes[ext] || "application/octet-stream"
-    });
+    response.writeHead(200, buildStandardHeaders(mimeTypes[ext] || "application/octet-stream"));
     createReadStream(filePath).pipe(response);
   } catch {
     notFound(response);

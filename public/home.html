@@ -5,24 +5,52 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>다밋 홈</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/logos/damit_icon_exact.svg" />
 </head>
 <body class="auth-body home-body">
   <div class="auth-shell home-shell">
     <section class="auth-panel success-panel home-panel">
       <div class="brand-lockup compact">
-        <img class="brand-mark small" src="/damit-mark.svg" alt="다밋 로고" />
-        <div>
-          <p class="eyebrow brand-eyebrow">DAMIT</p>
-          <strong class="brand-name small">다밋</strong>
-        </div>
+        <img class="brand-lockup-image compact" src="/logos/damit_default_exact.svg" alt="DAMIT 로고" />
       </div>
       <h1>운영 홈에 로그인되었습니다</h1>
       <p class="auth-copy">현재 회사, 멤버, 초대 상태를 확인하고 작업 워크스페이스로 이어서 이동할 수 있습니다. 권한이 있다면 팀 초대도 여기에서 처리합니다.</p>
+      <div id="home-return-banner" class="auth-return-banner hidden"></div>
+      <div id="home-return-actions" class="home-banner-actions hidden"></div>
 
       <div id="home-summary-card" class="landing-card large">
         <strong>운영 상태를 불러오는 중입니다.</strong>
         <p>회사 컨텍스트와 권한 정보를 확인하고 있습니다.</p>
       </div>
+
+      <section class="home-overview-grid">
+        <article class="home-overview-card home-overview-card-strong">
+          <span class="workspace-priority-kicker">Current Session</span>
+          <strong id="home-session-title">세션을 확인하는 중입니다.</strong>
+          <p id="home-session-copy">현재 로그인 세션과 회사 컨텍스트를 불러오고 있습니다.</p>
+        </article>
+        <article class="home-overview-card">
+          <span class="workspace-priority-kicker">Next Action</span>
+          <strong id="home-next-title">다음 액션을 계산하는 중입니다.</strong>
+          <p id="home-next-copy">권한과 현재 회사 상태에 따라 가장 먼저 할 일을 추천합니다.</p>
+        </article>
+      </section>
+
+      <section class="home-section stack">
+        <div class="home-section-header">
+          <div>
+            <p class="panel-kicker">Workflow</p>
+            <h2>지금 바로 할 일</h2>
+          </div>
+          <span id="home-role-chip" class="status-badge neutral">역할 확인 중</span>
+        </div>
+        <div id="home-next-actions" class="workspace-priority-list">
+          <article class="workspace-priority-item is-active">
+            <strong>운영 정보를 불러오는 중입니다</strong>
+            <p>로그인 정보와 현재 회사 권한을 확인한 뒤 추천 작업을 보여줍니다.</p>
+          </article>
+        </div>
+      </section>
 
       <section class="home-section stack">
         <div class="home-section-header">
@@ -37,6 +65,7 @@
           <select id="company-switcher"></select>
         </label>
         <button id="switch-company-button" class="secondary-button" type="button">활성 회사 바꾸기</button>
+        <p id="home-company-note" class="helper-text home-company-note">회사 전환은 현재 브라우저 세션에만 적용됩니다. 열려 있는 작업 탭이 있다면 전환 후 한 번 새로고침해 주세요.</p>
       </section>
 
       <section class="home-section stack">
@@ -75,9 +104,55 @@
         <div id="invitation-list" class="home-list empty-state">보낸 초대가 아직 없습니다.</div>
       </section>
 
+      <section class="home-section stack">
+        <div class="home-section-header">
+          <div>
+            <p class="panel-kicker">Where To Go</p>
+            <h2>어디로 이동하면 되는지</h2>
+          </div>
+        </div>
+        <p id="home-route-summary" class="helper-text home-route-summary">현재 역할과 회사 상태를 기준으로 권장 경로를 계산하는 중입니다.</p>
+        <div class="home-route-grid">
+          <article class="home-route-card" id="workspace-route-card">
+            <div class="home-route-topline">
+              <span id="workspace-route-badge" class="status-badge EXPLAINED">추천 경로</span>
+            </div>
+            <strong>작업 워크스페이스</strong>
+            <p>현장 기록 연결, 변경 견적, 설명 초안, 고객 확인 링크, 합의 기록까지 실제 업무를 처리하는 화면입니다.</p>
+            <a class="secondary-button landing-action" href="/app" id="workspace-link">업무 처리로 이동</a>
+          </article>
+          <article class="home-route-card" id="home-ops-card">
+            <div class="home-route-topline">
+              <span id="ops-route-badge" class="status-badge neutral">보조 경로</span>
+            </div>
+            <strong>운영 콘솔</strong>
+            <p id="home-ops-copy">운영 상태, 백업, 로그인 전달 준비도, 최근 활동을 확인하는 화면입니다. OWNER 권한에서만 직접 들어갈 수 있습니다.</p>
+            <a class="ghost-button landing-action" href="/ops" id="ops-link">운영 콘솔 보기</a>
+          </article>
+          <article class="home-route-card" id="account-route-card">
+            <div class="home-route-topline">
+              <span id="account-route-badge" class="status-badge neutral">계정 관리</span>
+            </div>
+            <strong>사장님 마이페이지</strong>
+            <p id="account-route-copy">내 정보, 현재 회사, 멤버 구성, 초대 상태, 세션 보안 상태를 확인하는 운영 계정 화면입니다.</p>
+            <a class="ghost-button landing-action" href="/account" id="account-link">마이페이지 보기</a>
+          </article>
+          <article class="home-route-card hidden" id="admin-route-card">
+            <div class="home-route-topline">
+              <span id="admin-route-badge" class="status-badge neutral">내부 전용</span>
+            </div>
+            <strong>시스템 관리자</strong>
+            <p id="admin-route-copy">여러 회사와 로그인 흐름을 전역으로 확인하는 내부 관리자 전용 화면입니다.</p>
+            <a class="ghost-button landing-action" href="/admin" id="admin-link">관리자 화면 보기</a>
+          </article>
+        </div>
+      </section>
+
       <div class="landing-actions">
-        <a class="primary-button landing-action action-emphasis" href="/app">작업 워크스페이스</a>
-        <a class="ghost-button landing-action" href="/ops" id="ops-link">운영 콘솔</a>
+        <a class="primary-button landing-action action-emphasis" href="/app" id="footer-workspace-link">작업 워크스페이스</a>
+        <a class="ghost-button landing-action" href="/account" id="footer-account-link">마이페이지</a>
+        <a class="ghost-button landing-action" href="/ops" id="footer-ops-link">운영 콘솔</a>
+        <a class="ghost-button landing-action hidden" href="/admin" id="footer-admin-link">시스템 관리자</a>
       </div>
       <button id="logout-button" class="ghost-button landing-action" type="button">로그아웃</button>
       <div id="home-feedback" class="feedback" aria-live="polite"></div>
@@ -86,3 +161,6 @@
   <script type="module" src="/home.js"></script>
 </body>
 </html>
+
+
+

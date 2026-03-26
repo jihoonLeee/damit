@@ -1,8 +1,15 @@
-﻿import { createBackup, createId, getOpsSnapshot, getStorageSummary, listBackups, nowIso, readDb, resetDb, updateDb } from "../../store.js";
+﻿import { createBackup, createId, getDataExplorer, getOpsSnapshot, getStorageSummary, listBackups, nowIso, readDb, resetDb, updateDb } from "../../store.js";
 import {
   createInvitation,
   getSessionContext,
   issueLoginChallenge,
+  listRecentChallengesByEmail,
+  listSessionsByUser,
+  reissueInvitation,
+  revokeOwnedSession,
+  revokeInvitation,
+  updateChallengeDelivery,
+  updateUserProfile,
   listCompaniesForUser,
   listInvitationsByCompany,
   listMembershipsByCompany,
@@ -129,7 +136,8 @@ export function createSqliteRepositoryBundle() {
         return getStorageSummary();
       },
       listRecentBackups: async (limit = 10) => listBackups(limit),
-      getOpsSnapshot: async (limit = 5) => getOpsSnapshot(limit)
+      getOpsSnapshot: async (limit = 5) => getOpsSnapshot(limit),
+      getDataExplorer: async (datasetKey = "jobCases", limit = 8) => getDataExplorer(datasetKey, limit)
     },
     jobCaseRepository: {
       listByScope: async (scope = {}) => {
@@ -400,18 +408,25 @@ export function createSqliteRepositoryBundle() {
       }
     },
     authRepository: {
-      issueChallenge: async (input) => issueLoginChallenge(input),
-      verifyChallenge: async (input) => verifyLoginChallenge(input),
-      getSessionContext: async (sessionId) => getSessionContext(sessionId),
-      refreshSessionByRefreshToken: async (refreshToken) => refreshSessionByRefreshToken(refreshToken),
-      revokeSession: async (sessionId) => revokeSession(sessionId),
-      revokeSessionByRefreshToken: async (refreshToken) => revokeSessionByRefreshToken(refreshToken),
-      switchSessionCompany: async (input) => switchSessionCompany(input),
-      createInvitation: async (input) => createInvitation(input),
-      listMembershipsByCompany: async (companyId) => listMembershipsByCompany(companyId),
-      listInvitationsByCompany: async (companyId) => listInvitationsByCompany(companyId),
-      listCompaniesForUser: async (userId) => listCompaniesForUser(userId)
-    },
+        issueChallenge: async (input) => issueLoginChallenge(input),
+        updateChallengeDelivery: async (input) => updateChallengeDelivery(input),
+        verifyChallenge: async (input) => verifyLoginChallenge(input),
+        getSessionContext: async (sessionId) => getSessionContext(sessionId),
+        updateUserProfile: async (input) => updateUserProfile(input),
+        listRecentChallengesByEmail: async (email, limit) => listRecentChallengesByEmail(email, limit),
+        refreshSessionByRefreshToken: async (refreshToken) => refreshSessionByRefreshToken(refreshToken),
+        revokeSession: async (sessionId) => revokeSession(sessionId),
+        listSessionsByUser: async (userId) => listSessionsByUser(userId),
+        revokeOwnedSession: async (input) => revokeOwnedSession(input),
+        revokeSessionByRefreshToken: async (refreshToken) => revokeSessionByRefreshToken(refreshToken),
+        switchSessionCompany: async (input) => switchSessionCompany(input),
+        createInvitation: async (input) => createInvitation(input),
+        reissueInvitation: async (input) => reissueInvitation(input),
+        revokeInvitation: async (input) => revokeInvitation(input),
+        listMembershipsByCompany: async (companyId) => listMembershipsByCompany(companyId),
+        listInvitationsByCompany: async (companyId) => listInvitationsByCompany(companyId),
+        listCompaniesForUser: async (userId) => listCompaniesForUser(userId)
+      },
     auditLogRepository: {
       append: async (entry) => {
         return updateDb((db) => {
@@ -431,11 +446,14 @@ export function createSqliteRepositoryBundle() {
           return toAuditLog(savedEntry);
         });
       },
-      listByCompany: async (companyId) => {
+      listByCompany: async (companyId, options = {}) => {
+        const limit = Number.parseInt(options.limit || 100, 10);
+        const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
         const db = await readDb();
         return db.auditLogs
           .filter((item) => item.company_id === companyId)
           .sort((left, right) => (left.created_at < right.created_at ? 1 : -1))
+          .slice(0, safeLimit)
           .map((item) => toAuditLog(item));
       }
     },

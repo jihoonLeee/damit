@@ -18,6 +18,7 @@
 - Postgres preflight: `npm run pg:preflight`
 - staging env check: `npm run env:check:staging`
 - production env check: `npm run env:check:production`
+- real mail smoke: `npm run smoke:mail:production-local`
 
 ## Current environment model
 
@@ -26,17 +27,29 @@
 - SQLite
 - local uploads
 - `MAIL_PROVIDER=FILE`
+- `AUTH_DEBUG_LINKS=true`
 
 ### Staging
 
 - current runtime: SQLite bootstrap on Fly
 - next DB target: Supabase Free Postgres via `DATABASE_URL`
 - current mail mode: `FILE`
+- current auth mode: `SameSite=Strict` session cookies, refresh CSRF required
 
 ### Production
 
 - current runtime: SQLite pilot
 - future DB target: external Postgres after adapter completion
+- target mail mode: `MAIL_PROVIDER=RESEND`
+- target auth mode: `AUTH_DEBUG_LINKS=false`, `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
+
+## Auth hardening defaults
+
+- refresh endpoint requires `x-csrf-token`
+- refresh rotates both session id and refresh token
+- session cookies default to `SameSite=Strict`
+- idle timeout default is 12 hours
+- login challenge TTL default is 15 minutes
 
 ## Staging checks
 
@@ -107,3 +120,33 @@ Expected local result:
 - SQLite counts return after restore
 - upload file count returns after restore
 - photo file paths exist again on disk
+
+
+## Real mail login cutover
+
+1. set `MAIL_PROVIDER=RESEND`
+2. set `RESEND_API_KEY`
+3. set `MAIL_FROM` to a verified sending domain
+4. set `APP_BASE_URL` to the real service origin
+5. keep `AUTH_DEBUG_LINKS=false`
+6. keep `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
+7. optionally add `TRUSTED_ORIGINS` only when more than one trusted browser origin is intentionally allowed
+8. verify login challenge delivery from `/login` without relying on any debug link
+
+
+## Ops auth/mail readiness check
+
+1. open /ops as owner
+2. confirm the login delivery mode matches the current environment
+3. confirm debug login link exposure is OFF before real-mail cutover
+4. confirm trusted-origin enforcement is ON before real-mail cutover
+5. if MAIL_PROVIDER=RESEND, confirm both MAIL_FROM and RESEND_API_KEY are shown as configured
+
+## Local real mail smoke
+
+1. keep real mail credentials in `.env.production.local`
+2. set `MAIL_PROVIDER=RESEND`, `MAIL_FROM`, `RESEND_API_KEY`, and `MAIL_SMOKE_TEST_EMAIL`
+3. keep `AUTH_DEBUG_LINKS=false` and `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
+4. run `npm run smoke:mail:production-local`
+5. confirm the command returns `delivery.provider=RESEND`
+6. manually open the recipient inbox and verify the login email arrived

@@ -1,5 +1,5 @@
 ﻿export const repositoryContracts = {
-  systemRepository: ["getStorageSummary", "createBackup", "resetAllData", "listRecentBackups", "getOpsSnapshot"],
+  systemRepository: ["getStorageSummary", "createBackup", "resetAllData", "listRecentBackups", "getOpsSnapshot", "getDataExplorer"],
   jobCaseRepository: [
     "listByScope",
     "getDetailById",
@@ -17,13 +17,20 @@
   ],
   authRepository: [
     "issueChallenge",
+    "updateChallengeDelivery",
     "verifyChallenge",
     "getSessionContext",
+    "updateUserProfile",
+    "listRecentChallengesByEmail",
     "refreshSessionByRefreshToken",
     "revokeSession",
+    "listSessionsByUser",
+    "revokeOwnedSession",
     "revokeSessionByRefreshToken",
     "switchSessionCompany",
     "createInvitation",
+    "reissueInvitation",
+    "revokeInvitation",
     "listMembershipsByCompany",
     "listInvitationsByCompany",
     "listCompaniesForUser"

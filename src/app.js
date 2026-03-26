@@ -9,7 +9,7 @@ import {
   summarizeAgreement,
   toJobCaseListItem
 } from "./contexts/field-agreement/domain/field-agreement.domain.js";
-import { HttpError, createRequestId, json, notFound, readJsonBody, sendError } from "./http.js";
+import { HttpError, createRequestId, json, jsonNoStore, notFound, readJsonBody, redirect, sendError } from "./http.js";
 import { parseMultipart } from "./multipart.js";
 import { createId, ensureStorage, nowIso, saveUpload } from "./store.js";
 import {
@@ -23,16 +23,28 @@ import {
 } from "./contexts/field-agreement/application/field-agreement.validation.js";
 import {
   assertCsrf,
+  assertTrustedOrigin,
   createAuthCookieHeaders,
   createClearAuthCookieHeaders,
   createCsrfToken,
   getAuthContext,
   refreshSessionFromRequest
 } from "./contexts/auth/application/auth-runtime.js";
+import { ensureAuthStorage } from "./contexts/auth/infrastructure/sqlite-auth-store.js";
+import { ensureCustomerConfirmationStorage } from "./contexts/customer-confirmation/infrastructure/sqlite-customer-confirmation-store.js";
 import { sendInvitationEmail, sendMagicLinkEmail } from "./mail-gateway.js";
 import { createRepositoryBundle } from "./repositories/createRepositoryBundle.js";
 import { normalizePathname, serveStaticRequest } from "./http/static-routes.js";
 import { handleSystemApiRequest } from "./http/system-routes.js";
+
+async function ensureOperationalSchemas(repositories) {
+  if (repositories.engine !== "SQLITE") {
+    return;
+  }
+
+  await ensureAuthStorage();
+  await ensureCustomerConfirmationStorage();
+}
 
 export function createApp() {
   const repositories = createRepositoryBundle();
@@ -43,7 +55,14 @@ export function createApp() {
 
       try {
         await ensureStorage();
+        await ensureOperationalSchemas(repositories);
         const pathname = normalizePathname(request.url);
+        const canonicalRedirectUrl = resolveCanonicalRedirectUrl(request);
+
+        if (canonicalRedirectUrl) {
+          redirect(response, 308, canonicalRedirectUrl);
+          return;
+        }
 
         if (pathname.startsWith("/api/v1/")) {
           await handleApiRequest(request, response, repositories);
@@ -56,6 +75,37 @@ export function createApp() {
       }
     }
   };
+}
+
+function resolveCanonicalRedirectUrl(request) {
+  const canonicalBaseUrl = String(config.appBaseUrl || "").trim();
+  if (!canonicalBaseUrl) {
+    return null;
+  }
+
+  let canonicalUrl;
+  try {
+    canonicalUrl = new URL(canonicalBaseUrl);
+  } catch {
+    return null;
+  }
+
+  const requestHost = String(request.headers.host || "").trim().toLowerCase();
+  if (!requestHost) {
+    return null;
+  }
+
+  const requestHostname = requestHost.split(":")[0];
+  const canonicalHostname = canonicalUrl.hostname.toLowerCase();
+
+  if (requestHostname !== `www.${canonicalHostname}`) {
+    return null;
+  }
+
+  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || (requestHostname.includes("localhost") || requestHostname.includes("127.0.0.1") ? "http" : "https");
+  const requestUrl = new URL(request.url, `${protocol}://${request.headers.host || canonicalUrl.host}`);
+  return `${canonicalUrl.origin}${requestUrl.pathname}${requestUrl.search}`;
 }
 
 async function handleApiRequest(request, response, repositories) {
@@ -82,6 +132,7 @@ async function handleApiRequest(request, response, repositories) {
 
   const publicConfirmationAckMatch = pathname.match(/^\/api\/v1\/public\/confirm\/([^/]+)\/acknowledge$/);
   if (request.method === "POST" && publicConfirmationAckMatch) {
+    assertTrustedOrigin(request);
     const token = decodeURIComponent(publicConfirmationAckMatch[1]);
     const payload = await readJsonBody(request);
     validateCustomerConfirmationAcknowledgement(payload);
@@ -97,7 +148,7 @@ async function handleApiRequest(request, response, repositories) {
       confirmedAt: link.confirmedAt
     });
 
-    json(response, 200, {
+    jsonNoStore(response, 200, {
       ok: true,
       status: link.status,
       confirmedAt: link.confirmedAt,
@@ -107,10 +158,11 @@ async function handleApiRequest(request, response, repositories) {
   }
 
   if (request.method === "POST" && pathname === "/api/v1/auth/challenges") {
+    assertTrustedOrigin(request);
     const payload = await readJsonBody(request);
     const email = String(payload.email || "").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new HttpError(422, "AUTH_EMAIL_REQUIRED", "\uC62C\uBC14\uB978 \uC774\uBA54\uC77C\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694", {
+      throw new HttpError(422, "AUTH_EMAIL_REQUIRED", "로그인 링크를 받을 이메일 주소가 필요합니다.", {
         email: "INVALID"
       });
     }
@@ -124,27 +176,47 @@ async function handleApiRequest(request, response, repositories) {
       deliveryStatus: "PENDING"
     });
 
-    const delivery = await sendMagicLinkEmail({
-      request,
-      email,
-      challengeId: challenge.id,
-      token,
-      invitationToken: payload.invitationToken
-    });
+    try {
+      const delivery = await sendMagicLinkEmail({
+        request,
+        email,
+        challengeId: challenge.id,
+        token,
+        invitationToken: payload.invitationToken
+      });
 
-    json(response, 201, {
-      challengeId: challenge.id,
-      retryAfterSeconds: 60,
-      delivery: {
-        provider: delivery.provider,
-        status: delivery.status
-      },
-      ...(delivery.debugMagicLink ? { debugMagicLink: delivery.debugMagicLink } : {})
-    });
-    return;
+      await repositories.authRepository.updateChallengeDelivery({
+        challengeId: challenge.id,
+        deliveryProvider: delivery.provider,
+        deliveryStatus: delivery.status
+      });
+
+      jsonNoStore(response, 201, {
+        challengeId: challenge.id,
+        retryAfterSeconds: 60,
+        delivery: {
+          provider: delivery.provider,
+          status: delivery.status,
+          targetMasked: delivery.targetMasked || null
+        },
+        ...(delivery.previewPath ? { previewPath: delivery.previewPath } : {}),
+        ...(delivery.debugMagicLink ? { debugMagicLink: delivery.debugMagicLink } : {})
+      });
+      return;
+    } catch (error) {
+      await repositories.authRepository.updateChallengeDelivery({
+        challengeId: challenge.id,
+        deliveryProvider: (config.mailProvider || "UNKNOWN").toUpperCase(),
+        deliveryStatus: "FAILED"
+      });
+      throw new HttpError(502, "MAIL_DELIVERY_FAILED", "로그인 메일을 보내지 못했습니다. 메일 설정을 확인한 뒤 다시 시도해 주세요.", {
+        cause: error.message
+      });
+    }
   }
 
   if (request.method === "POST" && pathname === "/api/v1/auth/verify") {
+    assertTrustedOrigin(request);
     const payload = await readJsonBody(request);
     if (!payload.challengeId || !payload.token) {
       throw new HttpError(422, "AUTH_VERIFY_INVALID", "\uB85C\uADF8\uC778 \uB9C1\uD06C \uC815\uBCF4\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4.");
@@ -159,7 +231,7 @@ async function handleApiRequest(request, response, repositories) {
     });
     const csrfToken = createCsrfToken();
 
-    json(
+    jsonNoStore(
       response,
       200,
       {
@@ -180,8 +252,10 @@ async function handleApiRequest(request, response, repositories) {
   }
 
   if (request.method === "POST" && pathname === "/api/v1/auth/refresh") {
+    assertTrustedOrigin(request);
+    assertCsrf(request);
     const refreshed = await refreshSessionFromRequest(request, repositories);
-    json(
+    jsonNoStore(
       response,
       200,
       {
@@ -202,6 +276,8 @@ async function handleApiRequest(request, response, repositories) {
   }
 
   if (request.method === "POST" && pathname === "/api/v1/auth/logout") {
+    assertTrustedOrigin(request);
+    assertCsrf(request);
     try {
       const authContext = await getAuthContext(request, repositories);
       if (authContext.sessionId) {
@@ -215,20 +291,21 @@ async function handleApiRequest(request, response, repositories) {
       }
     }
 
-    json(response, 200, { ok: true }, { "Set-Cookie": createClearAuthCookieHeaders() });
+    jsonNoStore(response, 200, { ok: true }, { "Set-Cookie": createClearAuthCookieHeaders() });
     return;
   }
 
   if (request.method === "GET" && pathname === "/api/v1/me") {
     const authContext = await getAuthContext(request, repositories);
-    json(response, 200, {
+    jsonNoStore(response, 200, {
       authenticated: true,
       mode: authContext.mode,
-      user: {
-        id: authContext.userId,
-        displayName: authContext.displayName,
-        email: authContext.email || null
-      },
+        user: {
+          id: authContext.userId,
+          displayName: authContext.displayName,
+          email: authContext.email || null,
+          phoneNumber: authContext.phoneNumber || null
+        },
       company: authContext.companyId
         ? {
             id: authContext.companyId,
@@ -241,7 +318,142 @@ async function handleApiRequest(request, response, repositories) {
     return;
   }
 
-  if (request.method === "GET" && pathname === "/api/v1/companies") {
+  if (request.method === "GET" && pathname === "/api/v1/account/overview") {
+    const authContext = await requireSessionContext(request, repositories);
+    const membershipItems = authContext.companyId
+      ? await repositories.authRepository.listMembershipsByCompany(authContext.companyId)
+      : [];
+    const invitationItems = authContext.companyId && authContext.role === "OWNER"
+      ? await repositories.authRepository.listInvitationsByCompany(authContext.companyId)
+      : [];
+    const sessionItems = await repositories.authRepository.listSessionsByUser(authContext.userId);
+    const recentLoginActivity = authContext.email
+      ? await repositories.authRepository.listRecentChallengesByEmail(authContext.email, 5)
+      : [];
+    const recentAccountActivity = authContext.companyId
+      ? (await repositories.auditLogRepository.listByCompany(authContext.companyId, { limit: 20 }))
+        .filter((item) => item.actorUserId === authContext.userId)
+        .slice(0, 5)
+        .map((item) => ({
+          id: item.id,
+          action: item.action,
+          resourceType: item.resourceType,
+          resourceId: item.resourceId || null,
+          createdAt: item.createdAt
+        }))
+      : [];
+
+    jsonNoStore(response, 200, {
+      user: {
+        id: authContext.userId,
+        displayName: authContext.displayName,
+        email: authContext.email || null,
+        phoneNumber: authContext.phoneNumber || null
+      },
+      company: authContext.companyId
+        ? {
+            id: authContext.companyId,
+            name: authContext.companyName,
+            role: authContext.role
+          }
+        : null,
+      companies: authContext.companies || [],
+      memberships: membershipItems,
+      invitations: invitationItems,
+      sessions: sessionItems.map((item) => ({
+        ...item,
+        isCurrent: item.id === authContext.sessionId,
+        isExpired: isPastTimestamp(item.expiresAt),
+        isIdleRisk: isSessionIdleRisk(item.lastSeenAt || item.createdAt)
+      })),
+      recentLoginActivity,
+      recentAccountActivity,
+      security: {
+        trustedOriginEnforced: config.authEnforceTrustedOrigin,
+        debugLinksEnabled: config.authDebugLinks,
+        sessionSameSite: config.sessionCookieSameSite,
+        csrfSameSite: config.csrfCookieSameSite,
+        sessionIdleTimeoutSeconds: config.sessionIdleTimeoutSeconds,
+        mailProvider: (config.mailProvider || "FILE").toUpperCase(),
+        mailFromConfigured: Boolean(config.mailFrom),
+        resendConfigured: Boolean(config.resendApiKey)
+      },
+      internalAccess: {
+        systemAdmin: isSystemAdminEmail(authContext.email)
+      }
+      });
+      return;
+    }
+
+    if (request.method === "PATCH" && pathname === "/api/v1/account/profile") {
+      assertTrustedOrigin(request);
+      assertCsrf(request);
+      const authContext = await requireSessionContext(request, repositories);
+      const payload = await readJsonBody(request);
+      const user = await repositories.authRepository.updateUserProfile({
+        userId: authContext.userId,
+        displayName: payload.displayName,
+        phoneNumber: payload.phoneNumber
+      });
+
+      if (authContext.companyId) {
+        await repositories.auditLogRepository.append({
+          companyId: authContext.companyId,
+          actorUserId: authContext.userId,
+          actorType: "USER",
+          action: "ACCOUNT_PROFILE_UPDATED",
+          resourceType: "USER",
+          resourceId: authContext.userId,
+          requestId: null,
+          payloadJson: {
+            displayName: user.displayName,
+            phoneNumber: user.phoneNumber
+          },
+          createdAt: nowIso()
+        });
+      }
+
+      jsonNoStore(response, 200, { user });
+      return;
+    }
+
+    const accountSessionMatch = pathname.match(/^\/api\/v1\/account\/sessions\/([^/]+)\/revoke$/);
+    if (request.method === "POST" && accountSessionMatch) {
+      assertTrustedOrigin(request);
+      assertCsrf(request);
+      const authContext = await requireSessionContext(request, repositories);
+      const sessionId = accountSessionMatch[1];
+
+      if (sessionId === authContext.sessionId) {
+        throw new HttpError(409, "AUTH_SESSION_CURRENT_REVOKE_NOT_ALLOWED", "현재 세션은 여기서 종료하지 않습니다. 로그아웃 버튼을 사용해 주세요.");
+      }
+
+      const session = await repositories.authRepository.revokeOwnedSession({
+        userId: authContext.userId,
+        sessionId
+      });
+
+      if (authContext.companyId) {
+        await repositories.auditLogRepository.append({
+          companyId: authContext.companyId,
+          actorUserId: authContext.userId,
+          actorType: "USER",
+          action: "ACCOUNT_SESSION_REVOKED",
+          resourceType: "SESSION",
+          resourceId: session.id,
+          requestId: null,
+          payloadJson: {
+            revokedAt: session.revokedAt
+          },
+          createdAt: nowIso()
+        });
+      }
+
+      jsonNoStore(response, 200, { session });
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/v1/companies") {
     const authContext = await requireSessionContext(request, repositories);
     json(response, 200, {
       items: authContext.companies || [],
@@ -252,6 +464,7 @@ async function handleApiRequest(request, response, repositories) {
 
   const switchMatch = pathname.match(/^\/api\/v1\/companies\/([^/]+)\/switch-context$/);
   if (request.method === "POST" && switchMatch) {
+    assertTrustedOrigin(request);
     assertCsrf(request);
     const authContext = await requireSessionContext(request, repositories);
     const result = await repositories.authRepository.switchSessionCompany({
@@ -259,7 +472,7 @@ async function handleApiRequest(request, response, repositories) {
       userId: authContext.userId,
       companyId: switchMatch[1]
     });
-    json(response, 200, result);
+    jsonNoStore(response, 200, result);
     return;
   }
 
@@ -269,24 +482,102 @@ async function handleApiRequest(request, response, repositories) {
     const authContext = await requireSessionContext(request, repositories);
     assertActiveCompanyMatch(authContext, companyId);
     const items = await repositories.authRepository.listMembershipsByCompany(companyId);
-    json(response, 200, { items });
+    jsonNoStore(response, 200, { items });
     return;
   }
 
   const invitationsMatch = pathname.match(/^\/api\/v1\/companies\/([^/]+)\/invitations$/);
+  const invitationActionMatch = pathname.match(/^\/api\/v1\/companies\/([^/]+)\/invitations\/([^/]+)\/(reissue|revoke)$/);
   if (invitationsMatch && request.method === "GET") {
     const companyId = invitationsMatch[1];
     const authContext = await requireSessionContext(request, repositories);
     assertActiveCompanyMatch(authContext, companyId);
     assertRole(authContext, ["OWNER"]);
     const items = await repositories.authRepository.listInvitationsByCompany(companyId);
-    json(response, 200, { items });
+    jsonNoStore(response, 200, { items });
     return;
-  }
+    }
 
-  if (invitationsMatch && request.method === "POST") {
-    assertCsrf(request);
-    const companyId = invitationsMatch[1];
+    if (invitationActionMatch && request.method === "POST") {
+      assertTrustedOrigin(request);
+      assertCsrf(request);
+      const companyId = invitationActionMatch[1];
+      const invitationId = invitationActionMatch[2];
+      const action = invitationActionMatch[3];
+      const authContext = await requireSessionContext(request, repositories);
+      assertActiveCompanyMatch(authContext, companyId);
+      assertRole(authContext, ["OWNER"]);
+
+      if (action === "reissue") {
+        const invitation = await repositories.authRepository.reissueInvitation({
+          companyId,
+          invitationId,
+          invitedByUserId: authContext.userId
+        });
+        const delivery = await sendInvitationEmail({
+          request,
+          email: invitation.email,
+          role: invitation.role,
+          companyName: invitation.companyName,
+          invitationToken: invitation.invitationToken
+        });
+        await repositories.auditLogRepository.append({
+          companyId,
+          actorUserId: authContext.userId,
+          actorType: "USER",
+          action: "COMPANY_INVITATION_REISSUED",
+          resourceType: "INVITATION",
+          resourceId: invitation.id,
+          requestId: null,
+          payloadJson: {
+            email: invitation.email,
+            role: invitation.role
+          },
+          createdAt: nowIso()
+        });
+        jsonNoStore(response, 200, {
+          id: invitation.id,
+          email: invitation.email,
+          role: invitation.role,
+          expiresAt: invitation.expiresAt,
+          delivery: {
+            provider: delivery.provider,
+            status: delivery.status,
+            targetMasked: delivery.targetMasked || null
+          },
+          ...(delivery.previewPath ? { previewPath: delivery.previewPath } : {}),
+          ...(delivery.debugInvitationLink ? { debugInvitationLink: delivery.debugInvitationLink } : {})
+        });
+        return;
+      }
+
+      const invitation = await repositories.authRepository.revokeInvitation({
+        companyId,
+        invitationId
+      });
+      await repositories.auditLogRepository.append({
+        companyId,
+        actorUserId: authContext.userId,
+        actorType: "USER",
+        action: "COMPANY_INVITATION_REVOKED",
+        resourceType: "INVITATION",
+        resourceId: invitation.id,
+        requestId: null,
+        payloadJson: {
+          email: invitation.email,
+          role: invitation.role,
+          status: invitation.status
+        },
+        createdAt: nowIso()
+      });
+      jsonNoStore(response, 200, { item: invitation });
+      return;
+    }
+
+    if (invitationsMatch && request.method === "POST") {
+      assertTrustedOrigin(request);
+      assertCsrf(request);
+      const companyId = invitationsMatch[1];
     const authContext = await requireSessionContext(request, repositories);
     assertActiveCompanyMatch(authContext, companyId);
     assertRole(authContext, ["OWNER"]);
@@ -304,15 +595,17 @@ async function handleApiRequest(request, response, repositories) {
       companyName: invitation.companyName,
       invitationToken: invitation.invitationToken
     });
-    json(response, 201, {
+    jsonNoStore(response, 201, {
       id: invitation.id,
       email: invitation.email,
       role: invitation.role,
       expiresAt: invitation.expiresAt,
       delivery: {
         provider: delivery.provider,
-        status: delivery.status
+        status: delivery.status,
+        targetMasked: delivery.targetMasked || null
       },
+      ...(delivery.previewPath ? { previewPath: delivery.previewPath } : {}),
       ...(delivery.debugInvitationLink ? { debugInvitationLink: delivery.debugInvitationLink } : {})
     });
     return;
@@ -841,6 +1134,7 @@ async function requireBusinessContext(request, repositories, options = {}) {
   const authContext = await getAuthContext(request, repositories);
   if (authContext.mode === "SESSION") {
     if (options.write) {
+      assertTrustedOrigin(request);
       assertCsrf(request);
     }
     return {
@@ -989,4 +1283,21 @@ function extractRefreshToken(request) {
     .map((part) => part.trim())
     .map((part) => part.split("="))
     .find(([name]) => name === config.refreshCookieName)?.[1] || "";
+}
+
+function isSystemAdminEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  return Boolean(normalized) && config.systemAdminEmails.includes(normalized);
+}
+
+function isPastTimestamp(value) {
+  return Boolean(value) && new Date(value).getTime() < Date.now();
+}
+
+function isSessionIdleRisk(value) {
+  if (!value) {
+    return false;
+  }
+  const ageMs = Date.now() - new Date(value).getTime();
+  return ageMs > Math.max(config.sessionIdleTimeoutSeconds * 1000 * 0.5, 60 * 60 * 1000);
 }

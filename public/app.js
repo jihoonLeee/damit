@@ -1,5 +1,10 @@
 ﻿const CSRF_COOKIE_NAME = "faa_csrf";
-const reviewMode = new URLSearchParams(window.location.search).get("review");
+const searchParams = new URLSearchParams(window.location.search);
+const reviewMode = searchParams.get("review");
+const requestedCaseId = searchParams.get("caseId");
+const navigationSource = searchParams.get("source");
+const opsFocusReason = searchParams.get("reason");
+const opsFocusTarget = searchParams.get("target");
 
 if (reviewMode) {
   document.body.classList.add(`review-${reviewMode}`);
@@ -43,11 +48,27 @@ const timelineLabels = {
   CUSTOMER_CONFIRMATION_CONFIRMED: "고객 확인이 완료되었습니다"
 };
 
+const workflowSteps = [
+  { key: "capture", label: "현장 기록" },
+  { key: "link", label: "작업 건 연결" },
+  { key: "quote", label: "변경 견적 정리" },
+  { key: "draft", label: "고객 설명 준비" },
+  { key: "confirm", label: "합의와 확인 기록" }
+];
+
 const elements = {
   runtimeBadge: document.querySelector("#runtime-badge"),
   authBadge: document.querySelector("#auth-badge"),
   countsBadge: document.querySelector("#counts-badge"),
   workspaceTip: document.querySelector("#workspace-tip"),
+  workspaceNextStep: document.querySelector("#workspace-next-step"),
+  workspaceNextStepCopy: document.querySelector("#workspace-next-step-copy"),
+  workspaceStateSummary: document.querySelector("#workspace-state-summary"),
+  workspaceStateCopy: document.querySelector("#workspace-state-copy"),
+  workspaceSelectionSummary: document.querySelector("#workspace-selection-summary"),
+  workspaceSelectionCopy: document.querySelector("#workspace-selection-copy"),
+  workspacePriorityList: document.querySelector("#workspace-priority-list"),
+  workflowChips: Array.from(document.querySelectorAll(".workflow-banner .flow-chip")),
   fieldRecordForm: document.querySelector("#field-record-form"),
   saveFieldRecord: document.querySelector("#save-field-record"),
   fieldRecordFeedback: document.querySelector("#field-record-feedback"),
@@ -69,6 +90,19 @@ const elements = {
   detailContent: document.querySelector("#detail-content"),
   detailFeedback: document.querySelector("#detail-feedback"),
   detailJump: document.querySelector("#detail-jump"),
+  opsReturnCard: document.querySelector("#ops-return-card"),
+  opsReturnBadge: document.querySelector("#ops-return-badge"),
+  opsReturnTitle: document.querySelector("#ops-return-title"),
+  opsReturnWhy: document.querySelector("#ops-return-why"),
+  opsReturnCopy: document.querySelector("#ops-return-copy"),
+  opsReturnMeta: document.querySelector("#ops-return-meta"),
+  opsReturnSteps: document.querySelector("#ops-return-steps"),
+  opsReturnAction: document.querySelector("#ops-return-action"),
+  caseFocusStage: document.querySelector("#case-focus-stage"),
+  caseFocusTitle: document.querySelector("#case-focus-title"),
+  caseFocusCopy: document.querySelector("#case-focus-copy"),
+  caseProgressCopy: document.querySelector("#case-progress-copy"),
+  caseProgressList: document.querySelector("#case-progress-list"),
   metricOriginal: document.querySelector("#metric-original"),
   metricRevised: document.querySelector("#metric-revised"),
   metricDelta: document.querySelector("#metric-delta"),
@@ -83,7 +117,9 @@ const elements = {
   copyDraft: document.querySelector("#copy-draft"),
   generateDraft: document.querySelector("#generate-draft"),
   customerConfirmSummary: document.querySelector("#customer-confirm-summary"),
+  customerConfirmBadge: document.querySelector("#customer-confirm-badge"),
   customerConfirmMeta: document.querySelector("#customer-confirm-meta"),
+  customerConfirmGuidance: document.querySelector("#customer-confirm-guidance"),
   customerConfirmUrl: document.querySelector("#customer-confirm-url"),
   openConfirmLink: document.querySelector("#open-confirm-link"),
   copyConfirmLink: document.querySelector("#copy-confirm-link"),
@@ -94,8 +130,12 @@ const elements = {
   confirmedAt: document.querySelector("#confirmedAt"),
   confirmedAmount: document.querySelector("#confirmedAmount"),
   customerResponseNote: document.querySelector("#customerResponseNote"),
+  agreementStageNote: document.querySelector("#agreement-stage-note"),
   saveAgreement: document.querySelector("#save-agreement"),
   fieldRecordsDetail: document.querySelector("#field-records-detail"),
+  timelineSummaryCopy: document.querySelector("#timeline-summary-copy"),
+  timelineCountBadge: document.querySelector("#timeline-count-badge"),
+  timelineRail: document.querySelector("#timeline-rail"),
   timeline: document.querySelector("#timeline")
 };
 
@@ -104,10 +144,43 @@ const state = {
   query: "",
   jobCases: [],
   currentFieldRecordId: null,
-  selectedJobCaseId: null,
+  selectedJobCaseId: requestedCaseId || null,
   selectedJobCaseDetail: null,
-  latestConfirmationUrl: ""
+  selectedTimelineItems: [],
+  latestConfirmationUrl: "",
+  healthSnapshot: null
 };
+
+const filterButtons = Array.from(document.querySelectorAll(".filter-chip"));
+
+function setOpsTargetHighlight(targetId) {
+  const focusableIds = [
+    "quote-card",
+    "draft-card",
+    "customer-confirm-card",
+    "agreement-card",
+    "records-card",
+    "timeline-card"
+  ];
+
+  for (const id of focusableIds) {
+    const element = document.getElementById(id);
+    if (!element) {
+      continue;
+    }
+    element.classList.toggle("ops-focus-target", Boolean(targetId) && id === targetId);
+  }
+}
+
+function redirectToLogin(reason = "session-expired") {
+  const params = new URLSearchParams();
+  params.set("reason", reason);
+  const nextPath = `${window.location.pathname}${window.location.search || ""}`;
+  if (nextPath.startsWith("/")) {
+    params.set("next", nextPath);
+  }
+  window.location.href = `/login?${params.toString()}`;
+}
 
 function readCookie(name) {
   const prefix = `${name}=`;
@@ -130,10 +203,33 @@ function buildAuthHeaders(extra = {}, method = "GET") {
 }
 
 function formatMoney(value) {
-  if (value == null || value === "") {
+  if (value == null || value === "" || !Number.isFinite(Number(value))) {
     return "-";
   }
-  return `${new Intl.NumberFormat("ko-KR").format(value)}원`;
+  return `${new Intl.NumberFormat("ko-KR").format(Number(value))}원`;
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return date.toLocaleString("ko-KR");
+}
+
+function toDateTimeLocal(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return adjusted.toISOString().slice(0, 16);
 }
 
 function showFeedback(target, message, type = "") {
@@ -179,6 +275,14 @@ function describeTimelineTitle(item) {
   return timelineLabels[item.eventType] || item.eventType || "작업 이력";
 }
 
+function hasStoredQuote(detail) {
+  return typeof detail?.revisedQuoteAmount === "number" && Number.isFinite(detail.revisedQuoteAmount);
+}
+
+function getWorkflowStepIndex(stepKey) {
+  return Math.max(workflowSteps.findIndex((step) => step.key === stepKey), 0);
+}
+
 function setDefaultConfirmedAt() {
   if (!elements.confirmedAt || elements.confirmedAt.value) {
     return;
@@ -187,107 +291,866 @@ function setDefaultConfirmedAt() {
   elements.confirmedAt.value = next;
 }
 
+function isTerminalStatus(status) {
+  return status === "AGREED" || status === "EXCLUDED";
+}
+
+function getConfirmationBadgeState(detail) {
+  const latest = detail?.latestCustomerConfirmationLink || null;
+  if (!latest) {
+    return {
+      label: isTerminalStatus(detail?.currentStatus) ? "기록 확인용" : "미발급",
+      tone: isTerminalStatus(detail?.currentStatus) ? "tone-good" : "tone-neutral"
+    };
+  }
+
+  switch (latest.status) {
+    case "CONFIRMED":
+      return { label: "확인 완료", tone: "tone-good" };
+    case "VIEWED":
+      return { label: "열람됨", tone: "tone-warning" };
+    case "ISSUED":
+      return { label: "발급됨", tone: "tone-neutral" };
+    case "REVOKED":
+      return { label: "만료/회수", tone: "tone-neutral" };
+    default:
+      return { label: latest.status, tone: "tone-neutral" };
+  }
+}
+
+function buildJobCardMetaPills(item) {
+  const pills = [];
+
+  if (isTerminalStatus(item.currentStatus)) {
+    pills.push({ label: "흐름 종료", tone: "is-good" });
+  } else if (item.currentStatus === "ON_HOLD") {
+    pills.push({ label: "답변 대기", tone: "is-warning" });
+  } else {
+    pills.push({ label: "진행 중", tone: "" });
+  }
+
+  if (item.hasAgreementRecord) {
+    pills.push({ label: "합의 기록 있음", tone: "is-good" });
+  } else {
+    pills.push({ label: "합의 기록 없음", tone: "is-warning" });
+  }
+
+  if (Number.isFinite(item.revisedQuoteAmount)) {
+    pills.push({ label: "변경 금액 저장", tone: "" });
+  } else {
+    pills.push({ label: "금액 정리 필요", tone: "is-warning" });
+  }
+
+  return pills.slice(0, 3);
+}
+
+function getListActionLabel(item) {
+  if (item.currentStatus === "AGREED") {
+    return "합의와 확인 기록이 끝났습니다. 이제는 증빙과 내부 공유용으로 다시 보면 됩니다.";
+  }
+  if (item.currentStatus === "EXCLUDED") {
+    return "작업 제외로 종료된 건입니다. 제외 사유와 메모를 다시 확인하는 용도로만 열면 됩니다.";
+  }
+  if (item.currentStatus === "ON_HOLD") {
+    return "설명은 끝났고 보류 상태입니다. 고객의 최종 답변을 기다리고 있습니다.";
+  }
+  if (!Number.isFinite(item.revisedQuoteAmount)) {
+    return "변경 금액을 아직 정리하지 않았습니다. 견적부터 정리해 주세요.";
+  }
+  if (!item.hasAgreementRecord) {
+    return "설명은 준비됐습니다. 합의 상태를 기록해 주세요.";
+  }
+  return "고객 확인과 후속 기록이 남아 있습니다.";
+}
+
+function buildOpsPriorityBridgeItem() {
+  if (navigationSource !== "ops" || !state.selectedJobCaseDetail || !opsFocusReason) {
+    return null;
+  }
+
+  switch (opsFocusReason) {
+    case "confirmation-viewed":
+      return {
+        title: "운영 우선 이유: 고객이 이미 내용을 봤습니다",
+        copy: "고객 확인 카드와 합의 기록을 먼저 보면 마지막 상태를 가장 빠르게 정리할 수 있습니다.",
+        toneClass: "is-warning"
+      };
+    case "confirmation-stale":
+      return {
+        title: "운영 우선 이유: 확인 링크 응답이 오래 멈췄습니다",
+        copy: "링크 상태와 마지막 메모를 먼저 보고 후속 연락이 필요한지 판단해 주세요.",
+        toneClass: "is-warning"
+      };
+    case "quote-missing":
+      return {
+        title: "운영 우선 이유: 견적 단계에서 병목이 생겼습니다",
+        copy: "금액/범위 카드부터 열어 변경 금액을 먼저 저장하면 뒤 단계가 같이 풀립니다.",
+        toneClass: "is-warning"
+      };
+    case "draft-missing":
+      return {
+        title: "운영 우선 이유: 설명 초안이 아직 없습니다",
+        copy: "초안을 먼저 만들면 고객 확인과 합의 기록으로 자연스럽게 이어집니다.",
+        toneClass: "is-warning"
+      };
+    case "confirm-link-needed":
+      return {
+        title: "운영 우선 이유: 고객 확인 단계가 아직 열리지 않았습니다",
+        copy: "고객 확인 링크를 발급하거나 바로 합의 기록을 남기면 흐름이 마무리 단계로 넘어갑니다.",
+        toneClass: "is-active"
+      };
+    case "on-hold-followup":
+      return {
+        title: "운영 우선 이유: 답변 대기 건을 다시 봐야 합니다",
+        copy: "새 입력보다 마지막 반응과 보류 메모를 먼저 확인하는 것이 더 중요합니다.",
+        toneClass: "is-warning"
+      };
+    case "status-review":
+      return {
+        title: "운영 우선 이유: 최종 상태를 한 번 더 분명히 해야 합니다",
+        copy: "합의 기록과 고객 확인 상태를 같이 보며 마지막 상태를 정리해 주세요.",
+        toneClass: "is-active"
+      };
+    default:
+      return {
+        title: "운영 콘솔에서 이어진 작업 건입니다",
+        copy: "현재 병목이 있는 작업 건으로 판단돼 이 화면에 우선으로 넘어왔습니다.",
+        toneClass: "is-active"
+      };
+  }
+}
+
+function buildOpsExecutionChecklist(reasonKey, targetId) {
+  const targetLabelMap = {
+    "quote-card": "변경 견적과 범위",
+    "draft-card": "고객 설명 초안",
+    "customer-confirm-card": "고객 확인 링크",
+    "agreement-card": "합의 기록",
+    "timeline-card": "타임라인"
+  };
+
+  const fallback = {
+    first: targetLabelMap[targetId] || "현재 추천 카드",
+    next: "관련 메모와 최근 상태를 함께 확인",
+    doneWhen: "지금 막힌 이유가 해소됐는지 한 번 더 확인"
+  };
+
+  switch (reasonKey) {
+    case "confirmation-viewed":
+      return {
+        first: "고객 확인 링크 상태 확인",
+        next: "합의 기록에서 마지막 상태 저장",
+        doneWhen: "열람 뒤 최종 상태가 남았으면 충분합니다."
+      };
+    case "confirmation-stale":
+      return {
+        first: "고객 확인 링크와 마지막 메모 확인",
+        next: "후속 연락이 필요한지 판단",
+        doneWhen: "대기 이유나 다음 액션이 분명해지면 충분합니다."
+      };
+    case "quote-missing":
+      return {
+        first: "변경 견적 금액 저장",
+        next: "추가 작업 범위 문구 확인",
+        doneWhen: "금액이 저장되어 다음 단계로 넘어갈 수 있으면 충분합니다."
+      };
+    case "draft-missing":
+      return {
+        first: "고객 설명 초안 생성",
+        next: "복사 가능한 문장인지 확인",
+        doneWhen: "고객에게 바로 보낼 수 있는 초안이 있으면 충분합니다."
+      };
+    case "confirm-link-needed":
+      return {
+        first: "고객 확인 링크 발급 또는 합의 기록 결정",
+        next: "확인 경로와 바로 합의 중 더 맞는 흐름 선택",
+        doneWhen: "확인 단계가 열리거나 합의 상태가 정리되면 충분합니다."
+      };
+    case "on-hold-followup":
+      return {
+        first: "보류 사유와 마지막 반응 확인",
+        next: "후속 연락 또는 대기 유지 판단",
+        doneWhen: "보류 이유와 다음 액션이 최신이면 충분합니다."
+      };
+    case "status-review":
+      return {
+        first: "합의 기록 상태 다시 확인",
+        next: "고객 확인 카드와 서로 맞는지 확인",
+        doneWhen: "최종 상태를 한 줄로 설명할 수 있으면 충분합니다."
+      };
+    case "timeline-followup":
+      return {
+        first: "최근 타임라인 이벤트 확인",
+        next: "멈춘 카드가 어디인지 찾기",
+        doneWhen: "다음 담당 행동이 분명하면 충분합니다."
+      };
+    default:
+      return fallback;
+  }
+}
+
+function createPriorityItems(snapshot) {
+  const items = [];
+  const opsBridgeItem = buildOpsPriorityBridgeItem();
+
+  if (opsBridgeItem) {
+    items.push(opsBridgeItem);
+  }
+
+  items.push({
+    title: snapshot.workspaceNextTitle,
+    copy: snapshot.workspaceNextCopy,
+    toneClass: snapshot.stageComplete ? "is-good" : "is-active"
+  });
+
+  switch (snapshot.stageKey) {
+    case "capture":
+      items.push({
+        title: "현장 사진과 사유를 빠짐없이 남겨 주세요",
+        copy: "첫 기록이 저장돼야 작업 건 연결과 견적 정리가 이어집니다.",
+        toneClass: ""
+      });
+      break;
+    case "link":
+      items.push({
+        title: "기존 작업 건에 연결하거나 새 작업 건을 만드세요",
+        copy: "현장 기록과 작업 건이 연결돼야 이후 기록이 한 흐름으로 쌓입니다.",
+        toneClass: ""
+      });
+      break;
+    case "quote":
+      items.push({
+        title: "변경 금액과 범위를 먼저 정리하세요",
+        copy: "금액이 저장돼야 설명 초안과 고객 확인 링크를 자연스럽게 만들 수 있습니다.",
+        toneClass: ""
+      });
+      break;
+    case "draft":
+      items.push({
+        title: "고객에게 보낼 설명 초안을 준비하세요",
+        copy: "설명 초안을 만들고 복사해 보내면 고객 확인 링크 발급이 쉬워집니다.",
+        toneClass: ""
+      });
+      break;
+    default:
+      items.push({
+        title: snapshot.stageComplete ? "이 작업 건은 운영 흐름상 마무리됐습니다" : "고객 확인과 합의 기록을 마무리해 주세요",
+        copy: snapshot.stageComplete
+          ? "필요하면 기록을 다시 확인하고 내부 공유용으로만 활용하면 됩니다."
+          : "확인 링크 상태와 합의 기록을 함께 남기면 나중에 다시 보기 쉬워집니다.",
+        toneClass: snapshot.stageComplete ? "is-good" : ""
+      });
+  }
+
+  return items.slice(0, 2);
+}
+
+function buildWorkflowSnapshot() {
+  const detail = state.selectedJobCaseDetail;
+  const hasSelectedJobCase = Boolean(state.selectedJobCaseId && detail);
+  const hasFieldRecord = Boolean(state.currentFieldRecordId || detail?.fieldRecords?.length);
+  const hasQuote = hasStoredQuote(detail);
+  const hasDraft = Boolean(detail?.latestDraftMessage?.body);
+  const hasConfirmationLink = Boolean(state.latestConfirmationUrl);
+  const status = detail?.currentStatus || "UNEXPLAINED";
+
+  const snapshot = {
+    stageKey: "capture",
+    stageComplete: false,
+    progressTitle: "1. 현장 사진과 사유를 먼저 기록해 주세요",
+    progressCopy: "사진 한 장 이상과 사유를 남기면 다음 단계로 자연스럽게 이어집니다.",
+    nextAction: "현장 기록을 저장하면 새 작업 건을 만들거나 기존 작업 건에 연결할 수 있습니다.",
+    workspaceNextTitle: "현장 기록을 먼저 저장하세요",
+    workspaceNextCopy: "현장 기록이 없으면 작업 건 연결과 견적 정리 흐름이 시작되지 않습니다.",
+    selectionTitle: "아직 선택된 작업 건이 없습니다",
+    selectionCopy: "가운데 목록에서 작업 건을 선택하면 현재 상태와 다음 액션을 여기서 요약합니다.",
+    focusTone: "tone-neutral",
+    focusBadge: "준비 중",
+    focusTitle: "현장 문제를 먼저 기록해 주세요.",
+    focusCopy: "운영 흐름은 현장 기록 저장부터 시작됩니다.",
+    agreementNote: "합의 기록은 금액, 채널, 메모를 함께 남길 때 나중에 다시 보기 쉽습니다.",
+    caseProgressCopy: "아직 시작 단계입니다. 현장 기록이 저장되면 다음 단계가 열립니다.",
+    priorityItems: []
+  };
+
+  if (!hasFieldRecord && !hasSelectedJobCase) {
+    snapshot.priorityItems = createPriorityItems(snapshot);
+    return snapshot;
+  }
+
+  if (!hasSelectedJobCase) {
+    snapshot.stageKey = "link";
+    snapshot.progressTitle = "2. 현장 기록을 작업 건에 연결해 주세요";
+    snapshot.progressCopy = "새 작업 건을 만들거나 기존 작업 건을 연결하면 이후 기록이 한 흐름으로 쌓입니다.";
+    snapshot.nextAction = "작업 건을 만들거나 선택해서 현장 기록과 연결해 주세요.";
+    snapshot.workspaceNextTitle = "작업 건 연결이 다음 단계입니다";
+    snapshot.workspaceNextCopy = "작업 건이 연결되면 변경 견적, 설명 초안, 합의 기록이 같은 타임라인에 남습니다.";
+    snapshot.selectionTitle = "현장 기록은 저장됐지만 작업 건이 아직 없습니다";
+    snapshot.selectionCopy = "왼쪽에서 새 작업 건을 만들거나 기존 작업 건에 연결해 주세요.";
+    snapshot.focusTone = "tone-warning";
+    snapshot.focusBadge = "연결 필요";
+    snapshot.focusTitle = "이제 작업 건을 연결할 차례입니다.";
+    snapshot.focusCopy = "고객명과 현장명을 정리해 두면 이후 기록과 검색이 쉬워집니다.";
+    snapshot.agreementNote = "합의 기록은 작업 건이 연결된 뒤부터 남길 수 있습니다.";
+    snapshot.caseProgressCopy = "현장 기록은 끝났습니다. 이제 작업 건 연결이 필요합니다.";
+    snapshot.priorityItems = createPriorityItems(snapshot);
+    return snapshot;
+  }
+
+  snapshot.selectionTitle = `${detail.customerLabel} · ${statusLabels[detail.currentStatus] || detail.currentStatus}`;
+  snapshot.selectionCopy = `${detail.siteLabel || "현장 정보"} · ${getListActionLabel(detail)}`;
+
+  if (status === "AGREED") {
+    snapshot.stageKey = "confirm";
+    snapshot.stageComplete = true;
+    snapshot.progressTitle = "합의 완료 상태입니다";
+    snapshot.progressCopy = "이 작업 건은 운영 흐름상 마무리됐습니다. 필요하면 기록 확인용으로 다시 볼 수 있습니다.";
+    snapshot.nextAction = "추가 조치는 없습니다. 금액, 링크, 타임라인 기록만 다시 확인하면 됩니다.";
+    snapshot.workspaceNextTitle = "이 작업 건은 완료된 상태입니다";
+    snapshot.workspaceNextCopy = "합의가 끝났으므로 후속 기록 확인과 내부 공유 위주로 활용하면 됩니다.";
+    snapshot.focusTone = "tone-good";
+    snapshot.focusBadge = "완료";
+    snapshot.focusTitle = "합의가 완료된 작업 건입니다.";
+    snapshot.focusCopy = "고객 확인 링크, 합의 메모, 타임라인이 모두 남아 있는지 마지막으로 확인해 주세요.";
+    snapshot.agreementNote = "합의 완료 후에는 기록 확인용으로 다시 열어볼 수 있습니다.";
+    snapshot.caseProgressCopy = "운영 흐름이 마무리됐습니다. 추가 작업은 필수가 아닙니다.";
+    snapshot.priorityItems = createPriorityItems(snapshot);
+    return snapshot;
+  }
+
+  if (status === "EXCLUDED") {
+    snapshot.stageKey = "confirm";
+    snapshot.stageComplete = true;
+    snapshot.progressTitle = "작업 제외로 종료된 상태입니다";
+    snapshot.progressCopy = "이 작업 건은 작업 제외로 마무리됐습니다. 제외 사유와 메모를 다시 볼 수 있습니다.";
+    snapshot.nextAction = "추가 조치는 없습니다. 제외 사유와 고객 반응만 다시 확인해 주세요.";
+    snapshot.workspaceNextTitle = "작업 제외로 정리된 건입니다";
+    snapshot.workspaceNextCopy = "필요하면 제외 사유와 메모를 내부 공유용으로만 다시 확인하면 됩니다.";
+    snapshot.focusTone = "tone-neutral";
+    snapshot.focusBadge = "종료";
+    snapshot.focusTitle = "작업 제외 상태로 마무리됐습니다.";
+    snapshot.focusCopy = "추가 진행보다는 기록 보관과 내부 공유 관점으로 확인하면 됩니다.";
+    snapshot.agreementNote = "작업 제외 상태도 메모와 확인 채널을 남겨두면 나중에 분쟁 대응이 쉬워집니다.";
+    snapshot.caseProgressCopy = "운영 흐름이 종료됐습니다. 기록 재확인만 남아 있습니다.";
+    snapshot.priorityItems = createPriorityItems(snapshot);
+    return snapshot;
+  }
+
+  if (!hasQuote) {
+    snapshot.stageKey = "quote";
+    snapshot.progressTitle = "3. 변경 견적과 범위를 정리해 주세요";
+    snapshot.progressCopy = "현장 기록을 기준으로 변경 금액과 추가 범위를 정리하면 설명 초안이 자연스럽게 이어집니다.";
+    snapshot.nextAction = "변경 금액을 저장하고 추가 작업 범위를 정리해 주세요.";
+    snapshot.workspaceNextTitle = "변경 견적 정리가 다음 단계입니다";
+    snapshot.workspaceNextCopy = "금액과 범위를 먼저 정리해야 설명 초안과 고객 확인 링크가 정확해집니다.";
+    snapshot.focusTone = "tone-warning";
+    snapshot.focusBadge = "금액 필요";
+    snapshot.focusTitle = "변경 금액이 아직 없습니다.";
+    snapshot.focusCopy = "현장 기록과 추가 범위를 기준으로 먼저 금액을 저장해 주세요.";
+    snapshot.agreementNote = "합의 기록은 변경 금액이 정리된 뒤에 남기는 것이 좋습니다.";
+    snapshot.caseProgressCopy = "작업 건 연결까지는 끝났습니다. 이제 견적 정리가 필요합니다.";
+    snapshot.priorityItems = createPriorityItems(snapshot);
+    return snapshot;
+  }
+
+  if (!hasDraft) {
+    snapshot.stageKey = "draft";
+    snapshot.progressTitle = "4. 고객 설명 초안을 준비해 주세요";
+    snapshot.progressCopy = "금액은 저장됐습니다. 이제 고객에게 보낼 설명 문장을 만들 차례입니다.";
+    snapshot.nextAction = "설명 초안을 생성해 고객에게 바로 복사해 보내세요.";
+    snapshot.workspaceNextTitle = "초안 생성이 다음 단계입니다";
+    snapshot.workspaceNextCopy = "고객에게 보낼 문장을 먼저 준비하면 확인 링크와 합의 기록이 훨씬 자연스럽습니다.";
+    snapshot.focusTone = "tone-warning";
+    snapshot.focusBadge = "초안 필요";
+    snapshot.focusTitle = "고객에게 보낼 초안이 아직 없습니다.";
+    snapshot.focusCopy = "고객이 이해하기 쉬운 문장을 먼저 만들고, 이후 확인 링크를 발급해 주세요.";
+    snapshot.agreementNote = "설명 초안과 고객 메시지가 먼저 준비되면 합의 기록도 더 명확해집니다.";
+    snapshot.caseProgressCopy = "금액 정리는 끝났고, 이제 초안만 만들면 됩니다.";
+    snapshot.priorityItems = createPriorityItems(snapshot);
+    return snapshot;
+  }
+
+  snapshot.stageKey = "confirm";
+  snapshot.progressTitle = status === "ON_HOLD" ? "5. 보류 상태를 남기고 답변을 기다리세요" : "5. 고객 확인과 합의 기록을 남겨 주세요";
+  snapshot.progressCopy = status === "ON_HOLD"
+    ? "설명과 금액 전달은 끝났습니다. 이제 고객의 최종 답변이나 추가 메모를 기다리면 됩니다."
+    : "설명 초안은 준비됐습니다. 고객 확인 링크를 보내거나 합의 기록을 남기면 흐름이 마무리됩니다.";
+  snapshot.nextAction = hasConfirmationLink
+    ? "고객 확인 링크 상태와 합의 기록을 함께 보면서 최종 상태를 남겨 주세요."
+    : "고객 확인 링크를 발급하거나 바로 합의 기록을 남겨 주세요.";
+  snapshot.workspaceNextTitle = status === "ON_HOLD" ? "보류 상태로 답변을 기다리세요" : "고객 확인과 합의 기록이 마지막 단계입니다";
+  snapshot.workspaceNextCopy = status === "ON_HOLD"
+    ? "필요하면 고객 답변 메모를 추가하고, 합의 완료로 바뀌면 기록을 마무리하면 됩니다."
+    : hasConfirmationLink
+      ? "링크 열람 여부와 확인 완료 여부를 보면서 최종 합의 상태를 기록해 주세요."
+      : "고객에게 설명을 전달했다면 확인 링크를 보내거나 바로 합의 기록을 남겨 주세요.";
+  snapshot.focusTone = status === "ON_HOLD" ? "tone-warning" : "tone-neutral";
+  snapshot.focusBadge = status === "ON_HOLD" ? "보류" : "마무리";
+  snapshot.focusTitle = status === "ON_HOLD" ? "답변을 기다리는 상태입니다." : "고객 확인과 합의 기록만 남았습니다.";
+  snapshot.focusCopy = status === "ON_HOLD"
+    ? "이미 설명은 끝났습니다. 고객 반응 메모와 최종 상태만 정리하면 됩니다."
+    : hasConfirmationLink
+      ? "링크 상태와 합의 메모를 함께 보면 진행 상황이 훨씬 명확해집니다."
+      : "확인 링크 발급과 합의 기록 중 더 빠른 경로부터 마무리해 주세요.";
+  snapshot.agreementNote = status === "ON_HOLD"
+    ? "보류 상태도 채널과 메모를 남겨두면 다음 응대가 쉬워집니다."
+    : "합의 상태, 채널, 금액, 메모를 함께 남기면 이후 다시 보기 쉽습니다.";
+  snapshot.caseProgressCopy = status === "ON_HOLD"
+    ? "보류 단계입니다. 최종 답변이 오면 상태만 업데이트하면 됩니다."
+    : "거의 끝났습니다. 고객 확인 또는 합의 기록을 남기면 흐름이 마무리됩니다.";
+  snapshot.priorityItems = createPriorityItems(snapshot);
+  return snapshot;
+}
+
+function buildOpsReturnContext(snapshot) {
+  if (navigationSource !== "ops" || !state.selectedJobCaseDetail || !state.selectedJobCaseId) {
+    return null;
+  }
+
+  const detail = state.selectedJobCaseDetail;
+  const latestConfirmation = detail.latestCustomerConfirmationLink || null;
+  const latestTimelineEvent = state.selectedTimelineItems?.[0] || null;
+  const confirmationBadge = getConfirmationBadgeState(detail);
+  const meta = [];
+
+  if (latestTimelineEvent?.eventType) {
+    meta.push(`최근 흐름 · ${describeTimelineTitle(latestTimelineEvent)}`);
+  }
+  if (latestConfirmation?.status) {
+    meta.push(`고객 확인 · ${confirmationBadge.label}`);
+  }
+  if (detail.siteLabel) {
+    meta.push(detail.siteLabel);
+  }
+  if (opsFocusReason) {
+    const reasonLabelMap = {
+      "confirmation-viewed": "운영 우선 · 고객 확인 열람",
+      "confirmation-stale": "운영 우선 · 확인 응답 지연",
+      "quote-missing": "운영 우선 · 견적 병목",
+      "draft-missing": "운영 우선 · 초안 필요",
+      "confirm-link-needed": "운영 우선 · 확인 단계 필요",
+      "on-hold-followup": "운영 우선 · 답변 대기",
+      "status-review": "운영 우선 · 상태 점검",
+      "record-check": "운영 우선 · 기록 확인"
+    };
+    meta.unshift(reasonLabelMap[opsFocusReason] || "운영 우선");
+  }
+
+  const focusTargetId = opsFocusTarget || null;
+
+  if (opsFocusReason === "confirmation-viewed") {
+    return {
+      tone: "tone-warning",
+      badge: "열람됨",
+      title: "고객이 내용을 본 뒤 마지막 정리가 멈춘 작업 건입니다.",
+      whyNow: "고객이 이미 내용을 봤기 때문에, 지금 정리하면 연락 왕복을 크게 줄일 수 있습니다.",
+      copy: "고객 확인 카드와 합의 기록을 같이 보면 지금 무엇을 확정해야 하는지 가장 빨리 보입니다.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "customer-confirm-card"),
+      actionLabel: "고객 확인 카드 보기",
+      targetId: focusTargetId || "customer-confirm-card"
+    };
+  }
+
+  if (opsFocusReason === "confirmation-stale") {
+    return {
+      tone: "tone-warning",
+      badge: "응답 지연",
+      title: "발급된 확인 링크가 오래 멈춘 작업 건입니다.",
+      whyNow: "확인 흐름이 길어질수록 고객 맥락과 내부 메모가 함께 흐려질 수 있습니다.",
+      copy: "확인 링크 상태와 마지막 메모를 먼저 보고, 후속 연락이 필요한지 빠르게 판단해 주세요.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "customer-confirm-card"),
+      actionLabel: "고객 확인 카드 보기",
+      targetId: focusTargetId || "customer-confirm-card"
+    };
+  }
+
+  if (opsFocusReason === "quote-missing") {
+    return {
+      tone: "tone-warning",
+      badge: "견적 병목",
+      title: "변경 금액이 비어 있어 전체 흐름이 멈춘 작업 건입니다.",
+      whyNow: "이 단계가 비어 있으면 설명 초안, 고객 확인, 합의 기록이 모두 같이 밀립니다.",
+      copy: "금액/범위 카드부터 열어 변경 금액을 먼저 저장해 주세요. 그다음부터는 흐름이 자연스럽게 이어집니다.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "quote-card"),
+      actionLabel: "금액/범위 카드 보기",
+      targetId: focusTargetId || "quote-card"
+    };
+  }
+
+  if (opsFocusReason === "draft-missing") {
+    return {
+      tone: "tone-warning",
+      badge: "초안 필요",
+      title: "금액은 정리됐지만 고객 설명이 아직 없는 작업 건입니다.",
+      whyNow: "설명 문장이 없으면 고객 확인 링크와 합의 기록도 자연스럽게 이어지지 않습니다.",
+      copy: "설명 초안을 먼저 만들고, 이후 고객 확인 또는 합의 기록으로 이어가면 가장 빠릅니다.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "draft-card"),
+      actionLabel: "설명 초안 보기",
+      targetId: focusTargetId || "draft-card"
+    };
+  }
+
+  if (opsFocusReason === "confirm-link-needed") {
+    return {
+      tone: "tone-neutral",
+      badge: "확인 전",
+      title: "설명은 준비됐지만 고객 확인 흐름이 아직 없는 작업 건입니다.",
+      whyNow: "지금은 새 입력보다 마지막 확인 단계를 열어 주는 편이 더 중요합니다.",
+      copy: "고객 확인 링크를 발급하거나 바로 합의 기록을 남기면 이 작업 건은 마무리 단계로 넘어갑니다.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "customer-confirm-card"),
+      actionLabel: "고객 확인 카드 보기",
+      targetId: focusTargetId || "customer-confirm-card"
+    };
+  }
+
+  if (opsFocusReason === "on-hold-followup") {
+    return {
+      tone: "tone-warning",
+      badge: "답변 대기",
+      title: "고객 답변을 기다리는 작업 건입니다.",
+      whyNow: "지금은 새 작업보다 마지막 반응과 보류 메모를 다시 확인하는 것이 더 중요합니다.",
+      copy: "합의 기록 카드에서 현재 상태와 메모를 먼저 보고, 다시 연락이 필요한지 짧게 판단해 주세요.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "agreement-card"),
+      actionLabel: "합의 기록 보기",
+      targetId: focusTargetId || "agreement-card"
+    };
+  }
+
+  if (opsFocusReason === "status-review") {
+    return {
+      tone: "tone-neutral",
+      badge: "상태 점검",
+      title: "합의 기록은 있지만 최종 상태 확인이 더 필요한 작업 건입니다.",
+      whyNow: "근거는 이미 있으니, 지금은 마지막 상태만 분명하게 정리하면 됩니다.",
+      copy: "합의 기록과 고객 확인 상태를 같이 보면서 최종 상태를 한 번 더 정리해 주세요.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "agreement-card"),
+      actionLabel: "합의 기록 보기",
+      targetId: focusTargetId || "agreement-card"
+    };
+  }
+
+  if (latestConfirmation?.status === "VIEWED") {
+    return {
+      tone: "tone-warning",
+      badge: "확인 열람",
+      title: "고객이 링크를 열었습니다. 마지막 상태만 남았습니다.",
+      whyNow: "고객이 이미 내용을 본 상태라, 지금 기록을 정리하면 답변 왕복을 줄일 수 있습니다.",
+      copy: "이 작업 건은 고객이 이미 내용을 확인해 먼저 열렸습니다. 고객 확인 카드와 합의 기록부터 보면 가장 빠릅니다.",
+      meta,
+      execution: buildOpsExecutionChecklist("confirmation-viewed", "customer-confirm-card"),
+      actionLabel: "고객 확인 카드 보기",
+      targetId: "customer-confirm-card"
+    };
+  }
+
+  if (snapshot.stageComplete) {
+    return {
+      tone: snapshot.focusTone,
+      badge: "근거 확인",
+      title: "완료된 작업 건을 다시 확인하는 상태입니다.",
+      whyNow: "추가 진행보다 기록 누락이 없는지 확인하는 단계입니다.",
+      copy: "추가 진행보다 금액, 메모, 타임라인 근거가 모두 남아 있는지 빠르게 다시 보는 것이 우선입니다.",
+      meta,
+      execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || "agreement-card"),
+      actionLabel: "합의 기록 보기",
+      targetId: focusTargetId || "agreement-card"
+    };
+  }
+
+  if (snapshot.stageKey === "quote") {
+    return {
+      tone: "tone-warning",
+      badge: "금액 먼저",
+      title: "아직 변경 견적이 비어 있습니다.",
+      whyNow: "금액이 비어 있으면 이후 설명과 합의 기록이 모두 같이 밀립니다.",
+      copy: "현장 기록과 추가 범위를 기준으로 금액부터 저장하면 이후 흐름이 가장 빨라집니다.",
+      meta,
+      execution: buildOpsExecutionChecklist("quote-missing", focusTargetId || "quote-card"),
+      actionLabel: "금액/범위 카드 보기",
+      targetId: focusTargetId || "quote-card"
+    };
+  }
+
+  if (snapshot.stageKey === "draft") {
+    return {
+      tone: "tone-warning",
+      badge: "초안 필요",
+      title: "금액 정리는 끝났고, 설명 초안만 남았습니다.",
+      whyNow: "초안이 없으면 고객 확인 링크와 합의 기록도 다음 단계로 넘어가지 못합니다.",
+      copy: "초안부터 만들면 고객 확인 링크와 합의 기록으로 자연스럽게 이어갈 수 있습니다.",
+      meta,
+      execution: buildOpsExecutionChecklist("draft-missing", focusTargetId || "draft-card"),
+      actionLabel: "설명 초안 보기",
+      targetId: focusTargetId || "draft-card"
+    };
+  }
+
+  if (detail.currentStatus === "ON_HOLD") {
+    return {
+      tone: "tone-warning",
+      badge: "답변 대기",
+      title: "보류 상태입니다. 마지막 고객 반응부터 확인하세요.",
+      whyNow: "지금은 새 작업보다 마지막 반응과 다음 응답 시점을 놓치지 않는 것이 더 중요합니다.",
+      copy: "합의 기록 카드에서 메모와 상태를 함께 보면 다음 연락이 필요한지 더 빨리 판단할 수 있습니다.",
+      meta,
+      execution: buildOpsExecutionChecklist("on-hold-followup", focusTargetId || "agreement-card"),
+      actionLabel: "합의 기록 보기",
+      targetId: focusTargetId || "agreement-card"
+    };
+  }
+
+  return {
+    tone: "tone-neutral",
+    badge: "마지막 확인",
+    title: "운영 콘솔에서 이어진 작업 건입니다. 마지막 확인만 남았습니다.",
+    whyNow: "지금은 새로운 입력보다 마지막 확인과 기록 정리가 더 중요한 상태입니다.",
+    copy: latestConfirmation
+      ? "고객 확인 카드와 합의 기록을 함께 보면 지금 상태를 가장 빠르게 이해할 수 있습니다."
+      : "고객 확인 링크 발급과 합의 기록 저장 중 더 빠른 경로부터 마무리해 주세요.",
+    meta,
+    execution: buildOpsExecutionChecklist(opsFocusReason, focusTargetId || (latestConfirmation ? "customer-confirm-card" : "agreement-card")),
+    actionLabel: latestConfirmation ? "고객 확인 카드 보기" : "합의 기록 보기",
+    targetId: focusTargetId || (latestConfirmation ? "customer-confirm-card" : "agreement-card")
+  };
+}
+
+function renderWorkflowBanner(snapshot) {
+  const activeIndex = getWorkflowStepIndex(snapshot.stageKey);
+  elements.workflowChips.forEach((chip, index) => {
+    const isCompleted = snapshot.stageComplete ? index <= activeIndex : index < activeIndex;
+    const isActive = !snapshot.stageComplete && index === activeIndex;
+    chip.classList.toggle("completed", isCompleted);
+    chip.classList.toggle("active", isActive);
+  });
+}
+
+function renderPriorityList(items) {
+  if (!elements.workspacePriorityList) {
+    return;
+  }
+  elements.workspacePriorityList.innerHTML = items
+    .map((item) => `
+      <article class="workspace-priority-item ${item.toneClass}">
+        <strong>${item.title}</strong>
+        <p>${item.copy}</p>
+      </article>
+    `)
+    .join("");
+}
+
+function renderCaseProgress(snapshot) {
+  if (!elements.caseProgressList) {
+    return;
+  }
+  const activeIndex = getWorkflowStepIndex(snapshot.stageKey);
+  elements.caseProgressCopy.textContent = snapshot.caseProgressCopy;
+  elements.caseProgressList.innerHTML = workflowSteps
+    .map((step, index) => {
+      const stepClass = snapshot.stageComplete
+        ? index <= activeIndex ? "is-completed" : "is-upcoming"
+        : index < activeIndex ? "is-completed" : index === activeIndex ? "is-active" : "is-upcoming";
+      const stepBadge = stepClass === "is-completed" ? "완료" : stepClass === "is-active" ? "현재" : "대기";
+      return `
+        <article class="case-progress-item ${stepClass}">
+          <div class="case-progress-topline">
+            <span class="case-progress-index">${index + 1}</span>
+            <span class="case-progress-badge ${stepClass}">${stepBadge}</span>
+          </div>
+          <strong>${step.label}</strong>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderOpsReturnContext(snapshot) {
+  if (!elements.opsReturnCard) {
+    return;
+  }
+
+  const context = buildOpsReturnContext(snapshot);
+  if (!context) {
+    elements.opsReturnCard.classList.add("hidden");
+    setOpsTargetHighlight(null);
+    return;
+  }
+
+  elements.opsReturnCard.classList.remove("hidden");
+  elements.opsReturnBadge.textContent = context.badge;
+  elements.opsReturnBadge.className = `ops-badge ${context.tone}`;
+  elements.opsReturnTitle.textContent = context.title;
+  if (elements.opsReturnWhy) {
+    elements.opsReturnWhy.textContent = context.whyNow || "지금 먼저 보는 이유를 여기서 짧게 안내합니다.";
+  }
+  elements.opsReturnCopy.textContent = context.copy;
+  elements.opsReturnMeta.innerHTML = context.meta
+    .map((item) => `<span class="ops-return-meta-pill">${item}</span>`)
+    .join("");
+  if (elements.opsReturnSteps) {
+    const execution = context.execution || buildOpsExecutionChecklist(opsFocusReason, context.targetId);
+    elements.opsReturnSteps.innerHTML = `
+      <div class="ops-return-step">
+        <span class="ops-return-step-label">먼저</span>
+        <strong>${execution.first}</strong>
+      </div>
+      <div class="ops-return-step">
+        <span class="ops-return-step-label">다음</span>
+        <strong>${execution.next}</strong>
+      </div>
+      <div class="ops-return-step">
+        <span class="ops-return-step-label">완료 기준</span>
+        <strong>${execution.doneWhen}</strong>
+      </div>
+    `;
+  }
+  elements.opsReturnAction.textContent = context.actionLabel;
+  elements.opsReturnAction.dataset.target = context.targetId;
+  setOpsTargetHighlight(context.targetId);
+}
+
+function renderWorkflowState() {
+  const snapshot = buildWorkflowSnapshot();
+  elements.progressTitle.textContent = snapshot.progressTitle;
+  elements.progressCopy.textContent = snapshot.progressCopy;
+  elements.nextActionHint.textContent = snapshot.nextAction;
+  elements.workspaceNextStep.textContent = snapshot.workspaceNextTitle;
+  elements.workspaceNextStepCopy.textContent = snapshot.workspaceNextCopy;
+  elements.workspaceSelectionSummary.textContent = snapshot.selectionTitle;
+  elements.workspaceSelectionCopy.textContent = snapshot.selectionCopy;
+  elements.caseFocusStage.textContent = snapshot.focusBadge;
+  elements.caseFocusStage.className = `ops-badge ${snapshot.focusTone}`;
+  elements.caseFocusTitle.textContent = snapshot.focusTitle;
+  elements.caseFocusCopy.textContent = snapshot.focusCopy;
+  if (elements.agreementStageNote) {
+    elements.agreementStageNote.textContent = snapshot.agreementNote;
+  }
+  renderWorkflowBanner(snapshot);
+  renderPriorityList(snapshot.priorityItems);
+  renderCaseProgress(snapshot);
+  renderOpsReturnContext(snapshot);
+}
+
 function renderReviewState() {
   if (!reviewMode) {
     return;
   }
-  window.requestAnimationFrame(() => {
+  const settleReviewFrame = () => {
     if (reviewMode === "agreement") {
       scrollToSection("agreement-card", false);
+      return;
     }
     if (reviewMode === "copy") {
       scrollToSection("draft-card", false);
       setCopyHint("복사 버튼과 안내 문구를 실제 사용 기준으로 점검하는 화면입니다.", true);
+      return;
     }
+    if (reviewMode === "ops-return") {
+      scrollToSection("ops-return-card", false);
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  window.scrollTo({ top: 0, behavior: "auto" });
+  window.requestAnimationFrame(() => {
+    settleReviewFrame();
+    window.setTimeout(settleReviewFrame, 120);
   });
 }
 
 function renderCustomerConfirmationState(detail) {
   const latest = detail?.latestCustomerConfirmationLink || null;
-  elements.customerConfirmSummary.textContent = latest
-    ? `최근 링크 상태: ${latest.status} · 만료 ${new Date(latest.expiresAt).toLocaleString("ko-KR")}`
-    : "설명 초안과 금액이 준비되면 고객 확인 링크를 발급할 수 있습니다.";
+  const isTerminal = isTerminalStatus(detail?.currentStatus);
+  const badgeState = getConfirmationBadgeState(detail);
+  const hasUrl = Boolean(state.latestConfirmationUrl);
 
-  elements.customerConfirmMeta.textContent = latest
-    ? [
-        latest.viewedAt ? `열람 ${new Date(latest.viewedAt).toLocaleString("ko-KR")}` : "아직 고객이 링크를 열지 않았습니다.",
-        latest.confirmedAt ? `확인 완료 ${new Date(latest.confirmedAt).toLocaleString("ko-KR")}` : "아직 확인 완료 기록이 없습니다."
-      ].join(" · ")
-    : "고객이 링크를 열거나 확인을 남기면 여기와 타임라인에 상태가 반영됩니다.";
+  if (elements.customerConfirmBadge) {
+    elements.customerConfirmBadge.textContent = badgeState.label;
+    elements.customerConfirmBadge.className = `ops-badge ${badgeState.tone}`;
+  }
+
+  if (!detail) {
+    elements.customerConfirmSummary.textContent = "작업 건을 선택하면 고객 확인 링크 상태를 여기서 바로 보여줍니다.";
+    elements.customerConfirmMeta.textContent = "링크 발급, 고객 열람, 확인 완료 여부가 여기와 타임라인에 함께 반영됩니다.";
+    elements.customerConfirmGuidance.textContent = "금액과 설명이 준비되면 확인 링크를 발급하고, 완료되면 기록 확인용으로만 다시 보면 됩니다.";
+    elements.customerConfirmUrl.value = "";
+    elements.openConfirmLink.classList.add("hidden");
+    elements.openConfirmLink.href = "#";
+    return;
+  }
+
+  if (!latest) {
+    elements.customerConfirmSummary.textContent = isTerminal
+      ? "이 작업 건은 이미 마무리된 상태입니다. 고객 확인 링크는 선택 사항이었고, 지금은 기록 확인용으로만 보면 됩니다."
+      : "설명 초안과 금액이 준비되면 고객 확인 링크를 발급할 수 있습니다.";
+    elements.customerConfirmMeta.textContent = isTerminal
+      ? "별도 링크 이력은 없습니다. 합의 기록과 타임라인만 다시 확인하면 충분합니다."
+      : "고객이 링크를 열거나 확인을 남기면 여기와 타임라인에 상태가 반영됩니다.";
+    elements.customerConfirmGuidance.textContent = isTerminal
+      ? "추가 조치는 없습니다. 필요하면 금액, 메모, 타임라인을 내부 공유용으로만 확인해 주세요."
+      : "설명을 전달한 뒤 링크를 발급하면 고객이 실제로 확인했는지 흐름을 더 분명하게 남길 수 있습니다.";
+  } else if (latest.status === "CONFIRMED") {
+    elements.customerConfirmSummary.textContent = "고객 확인이 완료됐습니다. 링크 흐름은 끝났고, 이제는 증빙과 다시 보기 용도로만 남아 있습니다.";
+    elements.customerConfirmMeta.textContent = [
+      latest.viewedAt ? `열람 ${formatDateTime(latest.viewedAt)}` : "열람 시각 없음",
+      latest.confirmedAt ? `확인 완료 ${formatDateTime(latest.confirmedAt)}` : "확인 완료 시각 없음"
+    ].join(" · ");
+    elements.customerConfirmGuidance.textContent = isTerminal
+      ? "합의 완료 또는 작업 제외까지 끝났다면 추가 조치는 없습니다. 링크와 타임라인을 기록 확인용으로만 보시면 됩니다."
+      : "확인 링크는 완료됐습니다. 이제 합의 상태와 메모를 마지막으로 정리하면 흐름이 닫힙니다.";
+  } else if (latest.status === "VIEWED") {
+    elements.customerConfirmSummary.textContent = "고객이 링크를 열람했습니다. 최종 확인 완료나 합의 상태만 정리하면 됩니다.";
+    elements.customerConfirmMeta.textContent = [
+      latest.viewedAt ? `열람 ${formatDateTime(latest.viewedAt)}` : "열람 시각 없음",
+      `만료 ${formatDateTime(latest.expiresAt)}`
+    ].join(" · ");
+    elements.customerConfirmGuidance.textContent = "고객이 이미 내용을 봤습니다. 현장 통화나 메시지 답변을 받은 뒤 합의 기록만 이어서 남겨 주세요.";
+  } else {
+    elements.customerConfirmSummary.textContent = `최근 링크 상태: 발급됨 · 만료 ${formatDateTime(latest.expiresAt)}`;
+    elements.customerConfirmMeta.textContent = "아직 고객 열람 기록이 없습니다. 링크를 보냈다면 열람 여부를 조금 더 지켜보면 됩니다.";
+    elements.customerConfirmGuidance.textContent = "링크를 전달한 뒤에는 고객이 열었는지, 그리고 합의 상태가 어떻게 끝났는지를 이 카드와 타임라인에서 같이 확인합니다.";
+  }
 
   elements.customerConfirmUrl.value = state.latestConfirmationUrl || "";
-  const hasUrl = Boolean(state.latestConfirmationUrl);
   elements.openConfirmLink.classList.toggle("hidden", !hasUrl);
   elements.openConfirmLink.href = hasUrl ? state.latestConfirmationUrl : "#";
 }
 
-function updateWorkspaceMeta(payload = null) {
-  setMetaPill(elements.authBadge, "인증: 세션 로그인", "success");
-
-  if (!payload) {
-    setMetaPill(elements.runtimeBadge, "런타임: 확인 실패", "warning");
-    setMetaPill(elements.countsBadge, "건수 정보: 확인 실패", "warning");
-    elements.workspaceTip.textContent = "운영 상태를 다시 불러오지 못했습니다. 서버 연결 상태를 확인해 주세요.";
-    return;
-  }
-
-  setMetaPill(elements.runtimeBadge, `런타임: ${payload.storageEngine || "unknown"}`, payload.storageEngine === "POSTGRES" ? "success" : "warning");
-  setMetaPill(elements.countsBadge, `작업 ${payload.counts?.jobCases ?? 0}건 · 현장 기록 ${payload.counts?.fieldRecords ?? 0}건`, payload.counts?.jobCases ? "success" : "");
-  elements.workspaceTip.textContent = payload.counts?.jobCases
-    ? "현재 저장된 작업 건이 있습니다. 목록에서 바로 이어서 처리할 수 있습니다."
-    : "아직 저장된 작업 건이 없습니다. 왼쪽의 현장 기록 입력부터 시작해 주세요.";
-}
-
 function syncActionState() {
   const hasFieldRecord = Boolean(state.currentFieldRecordId);
-  const hasSelectedJobCase = Boolean(state.selectedJobCaseId);
   const detail = state.selectedJobCaseDetail;
-  const hasQuote = Boolean(detail && Number.isInteger(detail.revisedQuoteAmount));
+  const hasSelectedJobCase = Boolean(state.selectedJobCaseId && detail);
+  const hasQuote = hasStoredQuote(detail);
   const hasDraft = Boolean(detail?.latestDraftMessage?.body);
   const hasConfirmationLink = Boolean(state.latestConfirmationUrl);
+  const terminal = isTerminalStatus(detail?.currentStatus);
 
   elements.createJobCase.disabled = !hasFieldRecord;
-  elements.saveQuote.disabled = !hasSelectedJobCase;
-  elements.generateDraft.disabled = !hasSelectedJobCase || !hasQuote;
+  elements.saveQuote.disabled = !hasSelectedJobCase || terminal;
+  elements.revisedQuoteAmount.disabled = !hasSelectedJobCase || terminal;
+  elements.generateDraft.disabled = !hasSelectedJobCase || !hasQuote || terminal;
   elements.copyDraft.disabled = !hasDraft;
-  elements.generateConfirmLink.disabled = !(hasSelectedJobCase && hasQuote && hasDraft);
+  elements.generateConfirmLink.disabled = !(hasSelectedJobCase && hasQuote && hasDraft) || terminal;
   elements.copyConfirmLink.disabled = !hasConfirmationLink;
-  elements.saveAgreement.disabled = !hasSelectedJobCase;
+  elements.saveAgreement.disabled = !hasSelectedJobCase || terminal;
+  elements.agreementStatus.disabled = !hasSelectedJobCase || terminal;
+  elements.confirmationChannel.disabled = !hasSelectedJobCase || terminal;
+  elements.confirmedAt.disabled = !hasSelectedJobCase || terminal;
+  elements.confirmedAmount.disabled = !hasSelectedJobCase || terminal;
+  elements.customerResponseNote.disabled = !hasSelectedJobCase || terminal;
   elements.detailJump.classList.toggle("hidden", !hasSelectedJobCase);
 
-  if (!hasFieldRecord) {
-    elements.progressTitle.textContent = "1. 현장 사진과 사유를 먼저 기록하세요";
-    elements.progressCopy.textContent = "사진 1장 이상과 사유를 남기면 다음 단계로 자연스럽게 이어집니다.";
-    elements.nextActionHint.textContent = "현장 기록을 저장하면 새 작업 건을 만들거나 기존 작업 건에 연결할 수 있습니다.";
-    return;
+  if (terminal) {
+    const terminalLabel = detail.currentStatus === "AGREED" ? "합의 완료" : "작업 제외";
+    elements.nextActionHint.textContent = `${terminalLabel} 상태입니다. 지금 화면은 기록 다시 보기와 내부 공유용으로 사용하면 됩니다.`;
   }
-
-  if (!hasSelectedJobCase) {
-    elements.progressTitle.textContent = "2. 작업 건에 연결하세요";
-    elements.progressCopy.textContent = "방금 저장한 기록을 새 작업 건에 붙이거나 기존 작업 건에 연결하면 상세 화면으로 이어집니다.";
-    elements.nextActionHint.textContent = "새 작업 건 생성 또는 기존 작업 건 연결 중 하나를 완료해 주세요.";
-    return;
-  }
-
-  if (!hasQuote) {
-    elements.progressTitle.textContent = "3. 변경 견적을 입력하세요";
-    elements.progressCopy.textContent = "기본 범위와 추가 작업을 비교하려면 먼저 변경 금액이 필요합니다.";
-    elements.nextActionHint.textContent = "상세 화면에서 변경 견적을 저장하면 설명 초안 생성으로 이어집니다.";
-    return;
-  }
-
-  if (!hasDraft) {
-    elements.progressTitle.textContent = "4. 고객 설명 초안을 생성하세요";
-    elements.progressCopy.textContent = "설명 문장을 만든 뒤 카카오톡이나 문자로 바로 복사해서 전달할 수 있습니다.";
-    elements.nextActionHint.textContent = "설명 초안을 만든 뒤 고객 확인 링크 또는 합의 기록으로 이어가세요.";
-    return;
-  }
-
-  elements.progressTitle.textContent = "5. 고객 확인과 합의를 기록하세요";
-  elements.progressCopy.textContent = "고객 확인 링크 또는 합의 기록으로 설명 근거와 의사결정을 남겨 주세요.";
-  elements.nextActionHint.textContent = hasConfirmationLink
-    ? "고객 확인 링크 상태와 합의 기록을 함께 보면서 타임라인을 정리해 주세요."
-    : "고객 확인 링크를 발급하거나 바로 합의 기록을 남길 수 있습니다.";
 }
 
 function scrollDetailIntoView() {
@@ -303,10 +1166,7 @@ function scrollToSection(targetId, smooth = true) {
   }
   const jumpOffset = window.innerWidth <= 720 ? (elements.detailJump?.offsetHeight || 0) + 16 : 12;
   const rect = target.getBoundingClientRect();
-  const alignToEnd = targetId === "timeline-card";
-  const nextTop = alignToEnd
-    ? rect.bottom + window.scrollY - window.innerHeight + 24
-    : rect.top + window.scrollY - jumpOffset;
+  const nextTop = rect.top + window.scrollY - jumpOffset;
   window.scrollTo({ top: Math.max(nextTop, 0), behavior: smooth ? "smooth" : "auto" });
 }
 
@@ -367,7 +1227,7 @@ async function request(url, options = {}, allowRetry = true) {
         await refreshSessionCookie();
         return request(url, options, false);
       } catch {
-        window.location.href = "/login";
+        redirectToLogin("session-expired");
         throw new Error("세션이 만료되었습니다.");
       }
     }
@@ -390,7 +1250,7 @@ async function loadHealth() {
     }
   } catch {
     updateWorkspaceMeta(null);
-    showFeedback(elements.fieldRecordFeedback, "운영 상태를 불러오지 못했습니다. 서버 연결을 확인해 주세요.", "error");
+    showFeedback(elements.fieldRecordFeedback, "운영 상태를 불러오지 못했습니다. 세션이나 서버 상태를 확인해 주세요.", "error");
   }
 }
 
@@ -401,8 +1261,20 @@ async function loadJobCases() {
   });
   const payload = await request(`/api/v1/job-cases?${params.toString()}`);
   state.jobCases = payload.items;
+  if (state.selectedJobCaseId && !state.jobCases.some((item) => item.id === state.selectedJobCaseId)) {
+    state.selectedJobCaseId = null;
+  }
   renderJobCases();
   renderLinkCandidates();
+
+  if (state.selectedJobCaseId && state.jobCases.length > 0) {
+    renderJobCases();
+    await loadJobCaseDetail(state.selectedJobCaseId);
+    if (navigationSource === "ops" && !reviewMode) {
+      showFeedback(elements.detailFeedback, "운영 콘솔에서 이어진 작업 건입니다. 여기서 기록과 합의 상태를 바로 확인할 수 있습니다.", "success");
+    }
+    return;
+  }
 
   if (!state.selectedJobCaseId && state.jobCases.length > 0 && (reviewMode || window.innerWidth >= 1280)) {
     state.selectedJobCaseId = state.jobCases[0].id;
@@ -413,7 +1285,7 @@ async function loadJobCases() {
 
 function renderJobCases() {
   if (state.jobCases.length === 0) {
-    elements.jobCases.innerHTML = '<div class="empty-state">아직 열린 작업 건이 없습니다. 왼쪽에서 현장 기록부터 시작해 주세요.</div>';
+    elements.jobCases.innerHTML = '<div class="empty-state">조건에 맞는 작업 건이 없습니다. 첫 작업 건을 만들어 흐름을 시작해 주세요.</div>';
     return;
   }
 
@@ -427,9 +1299,14 @@ function renderJobCases() {
           </div>
           <span class="status-badge ${item.currentStatus}">${statusLabels[item.currentStatus] || item.currentStatus}</span>
         </div>
+        <div class="job-card-meta-row">
+          ${buildJobCardMetaPills(item)
+            .map((pill) => `<span class="job-card-meta-pill ${pill.tone}">${pill.label}</span>`)
+            .join("")}
+        </div>
+        <p class="job-card-emphasis">${getListActionLabel(item)}</p>
         <p>최근 이슈 · ${describeReason(item)}</p>
-        <p>견적 · 원래 ${formatMoney(item.originalQuoteAmount)} / 변경 ${formatMoney(item.revisedQuoteAmount)}</p>
-        <p>${item.hasAgreementRecord ? "합의 기록이 있습니다" : "아직 합의 기록이 없습니다"} · 최근 업데이트 ${new Date(item.updatedAt).toLocaleString("ko-KR")}</p>
+        <p class="job-card-footnote">원래 ${formatMoney(item.originalQuoteAmount)} / 변경 ${formatMoney(item.revisedQuoteAmount)} · ${formatDateTime(item.updatedAt)}</p>
       </article>
     `)
     .join("");
@@ -449,7 +1326,7 @@ function renderLinkCandidates() {
   const filtered = state.jobCases.filter((item) => !query || item.customerLabel.toLowerCase().includes(query) || item.siteLabel.toLowerCase().includes(query));
 
   if (!state.currentFieldRecordId) {
-    elements.linkJobCases.innerHTML = '<p class="helper-text">현장 기록을 저장하면 연결 가능한 작업 건이 여기에 표시됩니다.</p>';
+    elements.linkJobCases.innerHTML = '<p class="helper-text">현장 기록을 먼저 저장하면 여기서 기존 작업 건을 연결할 수 있습니다.</p>';
     return;
   }
 
@@ -482,7 +1359,7 @@ function renderLinkCandidates() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jobCaseId: button.dataset.linkJobCaseId })
         });
-        showFeedback(elements.fieldRecordFeedback, "기존 작업 건에 연결했습니다.", "success");
+        showFeedback(elements.fieldRecordFeedback, "현장 기록을 기존 작업 건에 연결했습니다.", "success");
         state.selectedJobCaseId = button.dataset.linkJobCaseId;
         await loadJobCases();
         await loadJobCaseDetail(state.selectedJobCaseId);
@@ -490,10 +1367,62 @@ function renderLinkCandidates() {
       } catch (error) {
         showFeedback(elements.fieldRecordFeedback, error.message, "error");
       } finally {
-        setBusy(button, false, "연결 중...");
+        setBusy(button, false, "이 작업 건에 연결");
       }
     });
   });
+}
+
+function renderFieldRecords(records) {
+  elements.fieldRecordsDetail.innerHTML = records.length === 0
+    ? '<div class="empty-state">연결된 현장 기록이 아직 없습니다.</div>'
+    : records.map((record) => `
+        <article class="record-card">
+          <div class="record-card-topline">
+            <strong>현장 사유 · ${reasonLabels[record.secondaryReason] || reasonLabels[record.primaryReason] || "기타"}</strong>
+            <span class="record-card-time">${formatDateTime(record.createdAt)}</span>
+          </div>
+          <p class="record-card-note">${record.note || "메모가 없습니다."}</p>
+          <p class="record-card-meta">사진 ${record.photos.length}장</p>
+          <div class="record-photos">
+            ${record.photos.map((photo) => `<img src="${photo.url}" alt="현장 사진" />`).join("")}
+          </div>
+        </article>
+      `).join("");
+}
+
+function renderTimeline(items) {
+  elements.timeline.innerHTML = items.length === 0
+    ? '<div class="empty-state">아직 남은 타임라인 이벤트가 없습니다.</div>'
+    : items.map((item) => `
+        <article class="timeline-item">
+          <div class="timeline-item-topline">
+            <strong>${describeTimelineTitle(item)}</strong>
+            <span class="timeline-item-time">${formatDateTime(item.createdAt)}</span>
+          </div>
+          <p class="timeline-item-body">${item.summary || "요약 메모가 없습니다."}</p>
+          <span class="timeline-item-meta">이벤트 코드 · ${item.eventType || "UNKNOWN"}</span>
+        </article>
+      `).join("");
+
+  elements.timelineSummaryCopy.textContent = items.length === 0
+    ? "최근 작업 흐름이 아직 없습니다. 첫 저장부터 타임라인이 차례대로 쌓입니다."
+    : isTerminalStatus(state.selectedJobCaseDetail?.currentStatus)
+      ? `완료된 작업 건의 근거 기록 ${items.length}건이 시간순으로 정리되어 있습니다.`
+      : `최근 흐름 ${items.length}건이 시간순으로 정리되어 있습니다.`;
+  elements.timelineCountBadge.textContent = `${items.length}건`;
+  elements.timelineCountBadge.className = `status-badge ${items.length ? "EXPLAINED" : "neutral"}`;
+  elements.timelineRail.classList.toggle("is-bounded", items.length > 5);
+}
+
+function fillAgreementForm(detail) {
+  const latest = detail.latestAgreementRecord;
+  elements.agreementStatus.value = latest?.status || (["EXPLAINED", "AGREED", "ON_HOLD", "EXCLUDED"].includes(detail.currentStatus) ? detail.currentStatus : "");
+  elements.confirmationChannel.value = latest?.confirmationChannel || "";
+  elements.confirmedAt.value = latest?.confirmedAt ? toDateTimeLocal(latest.confirmedAt) : "";
+  elements.confirmedAmount.value = latest?.confirmedAmount ?? detail.revisedQuoteAmount ?? "";
+  elements.customerResponseNote.value = latest?.customerResponseNote || "";
+  setDefaultConfirmedAt();
 }
 
 async function loadJobCaseDetail(jobCaseId) {
@@ -507,7 +1436,8 @@ async function loadJobCaseDetail(jobCaseId) {
     ...detail,
     scopeComparison: scope || detail.scopeComparison || null
   };
-  state.latestConfirmationUrl = detail.latestCustomerConfirmationLink?.confirmationUrl || state.latestConfirmationUrl || "";
+  state.selectedTimelineItems = timeline.items || [];
+  state.latestConfirmationUrl = detail.latestCustomerConfirmationLink?.confirmationUrl || "";
 
   elements.detailEmpty.classList.add("hidden");
   elements.detailContent.classList.remove("hidden");
@@ -520,37 +1450,17 @@ async function loadJobCaseDetail(jobCaseId) {
   elements.revisedQuoteAmount.value = detail.revisedQuoteAmount ?? "";
 
   const scopePayload = state.selectedJobCaseDetail.scopeComparison || {};
-  elements.scopeBase.textContent = scopePayload.baseScopeSummary || "기본 포함 범위 요약이 아직 없습니다.";
-  elements.scopeExtra.textContent = scopePayload.extraWorkSummary || "추가 작업 요약이 아직 없습니다.";
-  elements.scopeReason.textContent = scopePayload.reasonWhyExtra || "";
+  elements.scopeBase.textContent = scopePayload.baseScopeSummary || "기본 입주청소 범위를 기준으로 보시면 됩니다.";
+  elements.scopeExtra.textContent = scopePayload.extraWorkSummary || "추가 작업이 아직 정리되지 않았습니다.";
+  elements.scopeReason.textContent = scopePayload.reasonWhyExtra || "현장 기록과 변경 금액을 저장하면 범위 설명이 더 또렷해집니다.";
 
-  elements.draftBody.textContent = detail.latestDraftMessage?.body || "설명 초안을 아직 만들지 않았습니다.";
-  setCopyHint("초안을 복사하면 카카오톡이나 문자로 바로 붙여 넣어 설명할 수 있습니다.", false);
+  elements.draftBody.textContent = detail.latestDraftMessage?.body || "설명 초안이 아직 없습니다. 변경 금액을 저장한 뒤 초안을 만들어 주세요.";
+  setCopyHint("설명 초안을 복사하면 카카오톡이나 문자로 바로 전달할 수 있습니다.", false);
   renderCustomerConfirmationState(detail);
-
-  elements.fieldRecordsDetail.innerHTML = detail.fieldRecords.length === 0
-    ? '<div class="empty-state">이 작업 건에 연결된 현장 기록이 아직 없습니다.</div>'
-    : detail.fieldRecords.map((record) => `
-        <article class="record-card">
-          <strong>확인 사유 · ${reasonLabels[record.secondaryReason] || reasonLabels[record.primaryReason] || "사유 확인 필요"}</strong>
-          <p>${record.note || "메모 없이 저장된 현장 기록입니다."}</p>
-          <p>기록 시각 · ${new Date(record.createdAt).toLocaleString("ko-KR")}</p>
-          <div class="record-photos">
-            ${record.photos.map((photo) => `<img src="${photo.url}" alt="현장 기록 사진" />`).join("")}
-          </div>
-        </article>
-      `).join("");
-
-  elements.timeline.innerHTML = timeline.items.length === 0
-    ? '<div class="empty-state">아직 남은 타임라인 항목이 없습니다.</div>'
-    : timeline.items.map((item) => `
-        <article class="timeline-item">
-          <strong>${describeTimelineTitle(item)}</strong>
-          <p>${item.summary || "요약 정보가 없습니다."}</p>
-          <span>${new Date(item.createdAt).toLocaleString("ko-KR")}</span>
-        </article>
-      `).join("");
-
+  renderFieldRecords(detail.fieldRecords);
+  renderTimeline(timeline.items);
+  fillAgreementForm(detail);
+  renderWorkflowState();
   syncActionState();
   renderReviewState();
 }
@@ -568,8 +1478,8 @@ elements.fieldRecordForm.addEventListener("submit", async (event) => {
   try {
     const payload = await request("/api/v1/field-records", { method: "POST", body: formData });
     state.currentFieldRecordId = payload.id;
-    elements.currentFieldRecordLabel.textContent = `저장된 현장 기록: ${payload.id}`;
-    showFeedback(elements.fieldRecordFeedback, "현장 기록을 저장했습니다.", "success");
+    elements.currentFieldRecordLabel.textContent = `현재 현장 기록: ${payload.id}`;
+    showFeedback(elements.fieldRecordFeedback, "현장 기록을 저장했습니다. 이제 작업 건을 만들거나 연결해 주세요.", "success");
     renderLinkCandidates();
     syncActionState();
   } catch (error) {
@@ -606,7 +1516,7 @@ elements.jobCaseForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ jobCaseId: jobCase.id })
     });
     state.selectedJobCaseId = jobCase.id;
-    showFeedback(elements.fieldRecordFeedback, "새 작업 건을 만들고 현장 기록을 연결했습니다.", "success");
+    showFeedback(elements.fieldRecordFeedback, "작업 건을 만들고 현장 기록까지 연결했습니다.", "success");
     await loadJobCases();
     await loadJobCaseDetail(jobCase.id);
     scrollDetailIntoView();
@@ -748,7 +1658,7 @@ elements.agreementForm.addEventListener("submit", async (event) => {
         status: elements.agreementStatus.value,
         confirmationChannel: elements.confirmationChannel.value,
         confirmedAt: elements.confirmedAt.value ? new Date(elements.confirmedAt.value).toISOString() : undefined,
-        confirmedAmount: elements.confirmedAmount.value,
+        confirmedAmount: elements.confirmedAmount.value === "" ? undefined : Number(elements.confirmedAmount.value),
         customerResponseNote: elements.customerResponseNote.value
       })
     });
@@ -763,9 +1673,9 @@ elements.agreementForm.addEventListener("submit", async (event) => {
   }
 });
 
-document.querySelectorAll(".filter-chip").forEach((button) => {
+filterButtons.forEach((button) => {
   button.addEventListener("click", async () => {
-    document.querySelectorAll(".filter-chip").forEach((chip) => chip.classList.toggle("active", chip === button));
+    filterButtons.forEach((chip) => chip.classList.toggle("active", chip === button));
     state.filterStatus = button.dataset.status;
     await loadJobCases();
   });
@@ -784,6 +1694,7 @@ elements.resetFieldRecord.addEventListener("click", () => {
   state.currentFieldRecordId = null;
   state.selectedJobCaseId = null;
   state.selectedJobCaseDetail = null;
+  state.selectedTimelineItems = [];
   state.latestConfirmationUrl = "";
   elements.fieldRecordForm.reset();
   elements.jobCaseForm.reset();
@@ -793,12 +1704,26 @@ elements.resetFieldRecord.addEventListener("click", () => {
   elements.detailStatus.className = "status-badge neutral";
   elements.detailContent.classList.add("hidden");
   elements.detailEmpty.classList.remove("hidden");
-  setCopyHint("초안을 복사하면 카카오톡이나 문자로 바로 붙여 넣어 설명할 수 있습니다.", false);
+  elements.scopeBase.textContent = "기본 범위 요약을 불러오는 중입니다.";
+  elements.scopeExtra.textContent = "추가 작업 요약을 불러오는 중입니다.";
+  elements.scopeReason.textContent = "";
+  elements.draftBody.textContent = "설명 초안을 아직 만들지 않았습니다.";
+  elements.metricOriginal.textContent = "-";
+  elements.metricRevised.textContent = "-";
+  elements.metricDelta.textContent = "-";
+  elements.fieldRecordsDetail.innerHTML = "";
+  elements.timeline.innerHTML = "";
+  elements.timelineSummaryCopy.textContent = "최근 작업 흐름과 확인 흔적을 시간순으로 보여줍니다.";
+  elements.timelineCountBadge.textContent = "0건";
+  elements.timelineCountBadge.className = "status-badge neutral";
+  elements.timelineRail.classList.remove("is-bounded");
+  setCopyHint("설명 초안을 복사하면 카카오톡이나 문자로 바로 전달할 수 있습니다.", false);
   renderCustomerConfirmationState(null);
   showFeedback(elements.fieldRecordFeedback, "", "");
   showFeedback(elements.detailFeedback, "", "");
   renderLinkCandidates();
   renderJobCases();
+  elements.agreementForm.reset();
   setDefaultConfirmedAt();
   syncActionState();
 });
@@ -809,8 +1734,18 @@ elements.detailJump.querySelectorAll("[data-target]").forEach((button) => {
   });
 });
 
+if (elements.opsReturnAction) {
+  elements.opsReturnAction.addEventListener("click", () => {
+    const targetId = elements.opsReturnAction.dataset.target;
+    if (targetId) {
+      scrollToSection(targetId);
+    }
+  });
+}
+
 setDefaultConfirmedAt();
 renderCustomerConfirmationState(null);
+renderWorkflowState();
 syncActionState();
 loadHealth().catch(() => undefined);
 loadJobCases().catch((error) => {

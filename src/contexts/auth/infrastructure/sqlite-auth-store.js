@@ -35,6 +35,21 @@ function plusDays(days) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+function plusSeconds(seconds) {
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function isPast(value) {
+  return new Date(value).getTime() < Date.now();
+}
+
+function isSessionIdleExpired(session) {
+  if (!session?.last_seen_at) {
+    return false;
+  }
+  return Date.now() - new Date(session.last_seen_at).getTime() > config.sessionIdleTimeoutSeconds * 1000;
+}
+
 function ensureSchema(database) {
   database.exec(`
     PRAGMA journal_mode = WAL;
@@ -164,11 +179,28 @@ function mapCompanySummary(item) {
   };
 }
 
+function revokeSessionRecord(database, sessionId, revokedAt = nowIso()) {
+  database.prepare(`UPDATE sessions SET revoked_at = ? WHERE id = ?`).run(revokedAt, sessionId);
+}
+
+function touchSessionRecord(database, sessionId, timestamp = nowIso()) {
+  database.prepare(`UPDATE sessions SET last_seen_at = ? WHERE id = ?`).run(timestamp, sessionId);
+}
+
+function markChallengeDelivery(database, challengeId, deliveryProvider, deliveryStatus) {
+  database.prepare(`
+    UPDATE login_challenges
+    SET delivery_provider = ?,
+        delivery_status = ?
+    WHERE id = ?
+  `).run(deliveryProvider || null, deliveryStatus || null, challengeId);
+}
+
 function buildSessionPayload(database, session) {
   if (!session || session.revoked_at) {
     return null;
   }
-  if (new Date(session.expires_at).getTime() < Date.now()) {
+  if (isPast(session.expires_at) || isSessionIdleExpired(session)) {
     return null;
   }
 
@@ -185,24 +217,25 @@ function buildSessionPayload(database, session) {
     return null;
   }
 
-  return {
-    sessionId: session.id,
-    userId: user.id,
-    email: user.email,
-    displayName: user.display_name,
-    companyId: company.id,
+    return {
+      sessionId: session.id,
+      userId: user.id,
+      email: user.email,
+      displayName: user.display_name,
+      phoneNumber: user.phone_number,
+      companyId: company.id,
     companyName: company.name,
     role: membership.role,
     membershipId: membership.id,
     expiresAt: session.expires_at,
+    lastSeenAt: session.last_seen_at,
     companies: listActiveMembershipRows(database, user.id).map(mapCompanySummary)
   };
 }
 
-function createSession(database, { userId, membershipId, companyId }) {
+function createSession(database, { userId, membershipId, companyId, createdAt = nowIso() }) {
   const sessionId = createId("session");
   const refreshToken = crypto.randomBytes(24).toString("base64url");
-  const timestamp = nowIso();
   database.prepare(`
     INSERT INTO sessions (
       id, user_id, company_id, membership_id, refresh_token_hash,
@@ -214,10 +247,10 @@ function createSession(database, { userId, membershipId, companyId }) {
     companyId,
     membershipId,
     sha256(refreshToken),
-    timestamp,
-    plusDays(30),
+    createdAt,
+    plusSeconds(config.refreshSessionMaxAgeSeconds),
     null,
-    timestamp
+    createdAt
   );
 
   return {
@@ -244,45 +277,58 @@ export async function issueLoginChallenge({ email, token, requestIp, deliveryPro
     throw new HttpError(429, "AUTH_CHALLENGE_RATE_LIMITED", "요청이 너무 많아요. 잠시 후 다시 시도해주세요");
   }
 
-  const user = database.prepare(`SELECT id FROM users WHERE email = ?`).get(normalizedEmail);
-  const challenge = {
-    id: createId("challenge"),
-    userId: user?.id || null,
-    email: normalizedEmail,
-    tokenHash: sha256(token),
-    status: "ISSUED",
-    expiresAt: plusMinutes(15),
-    consumedAt: null,
-    requestIp: requestIp || null,
-    deliveryProvider: deliveryProvider || "FILE",
-    deliveryStatus: deliveryStatus || "PENDING",
-    createdAt: nowIso()
-  };
+  return transaction((tx) => {
+    const user = tx.prepare(`SELECT id FROM users WHERE email = ?`).get(normalizedEmail);
+    const challenge = {
+      id: createId("challenge"),
+      userId: user?.id || null,
+      email: normalizedEmail,
+      tokenHash: sha256(token),
+      status: "ISSUED",
+      expiresAt: plusMinutes(config.authChallengeTtlMinutes),
+      consumedAt: null,
+      requestIp: requestIp || null,
+      deliveryProvider: deliveryProvider || "PENDING",
+      deliveryStatus: deliveryStatus || "PENDING",
+      createdAt: nowIso()
+    };
 
-  database.prepare(`
-    INSERT INTO login_challenges (
-      id, user_id, email, token_hash, status, expires_at, consumed_at,
-      request_ip, delivery_provider, delivery_status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    challenge.id,
-    challenge.userId,
-    challenge.email,
-    challenge.tokenHash,
-    challenge.status,
-    challenge.expiresAt,
-    challenge.consumedAt,
-    challenge.requestIp,
-    challenge.deliveryProvider,
-    challenge.deliveryStatus,
-    challenge.createdAt
-  );
+    tx.prepare(`
+      UPDATE login_challenges
+      SET status = 'SUPERSEDED'
+      WHERE email = ? AND status = 'ISSUED'
+    `).run(normalizedEmail);
 
-  return {
-    id: challenge.id,
-    email: challenge.email,
-    expiresAt: challenge.expiresAt
-  };
+    tx.prepare(`
+      INSERT INTO login_challenges (
+        id, user_id, email, token_hash, status, expires_at, consumed_at,
+        request_ip, delivery_provider, delivery_status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      challenge.id,
+      challenge.userId,
+      challenge.email,
+      challenge.tokenHash,
+      challenge.status,
+      challenge.expiresAt,
+      challenge.consumedAt,
+      challenge.requestIp,
+      challenge.deliveryProvider,
+      challenge.deliveryStatus,
+      challenge.createdAt
+    );
+
+    return {
+      id: challenge.id,
+      email: challenge.email,
+      expiresAt: challenge.expiresAt
+    };
+  });
+}
+
+export async function updateChallengeDelivery({ challengeId, deliveryProvider, deliveryStatus }) {
+  await ensureAuthStorage();
+  markChallengeDelivery(getDb(), challengeId, deliveryProvider, deliveryStatus);
 }
 
 function resolveInvitation(database, invitationToken, challengeEmail, userId) {
@@ -303,7 +349,7 @@ function resolveInvitation(database, invitationToken, challengeEmail, userId) {
   if (invitation.status !== "ISSUED") {
     throw new HttpError(409, "INVITATION_NOT_AVAILABLE", "사용할 수 없는 초대 링크예요");
   }
-  if (new Date(invitation.expires_at).getTime() < Date.now()) {
+  if (isPast(invitation.expires_at)) {
     throw new HttpError(410, "INVITATION_EXPIRED", "초대 링크가 만료됐어요");
   }
   if (invitation.email !== challengeEmail) {
@@ -362,7 +408,7 @@ export async function verifyLoginChallenge({ challengeId, token, displayName, co
     if (challenge.token_hash !== tokenHash) {
       throw new HttpError(403, "AUTH_CHALLENGE_INVALID", "로그인 링크가 올바르지 않아요");
     }
-    if (new Date(challenge.expires_at).getTime() < Date.now()) {
+    if (isPast(challenge.expires_at)) {
       throw new HttpError(410, "AUTH_CHALLENGE_EXPIRED", "로그인 링크가 만료됐어요");
     }
 
@@ -464,14 +510,16 @@ export async function verifyLoginChallenge({ challengeId, token, displayName, co
       throw new HttpError(500, "AUTH_MEMBERSHIP_RESOLUTION_FAILED", "회사 정보를 불러오지 못했습니다.");
     }
 
+    const timestamp = nowIso();
     const session = createSession(database, {
       userId: user.id,
       membershipId: selectedMembership.id,
-      companyId: selectedMembership.company_id
+      companyId: selectedMembership.company_id,
+      createdAt: timestamp
     });
 
-    database.prepare(`UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?`).run(nowIso(), nowIso(), user.id);
-    database.prepare(`UPDATE login_challenges SET status = 'CONSUMED', consumed_at = ? WHERE id = ?`).run(nowIso(), challenge.id);
+    database.prepare(`UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?`).run(timestamp, timestamp, user.id);
+    database.prepare(`UPDATE login_challenges SET status = 'CONSUMED', consumed_at = ? WHERE id = ?`).run(timestamp, challenge.id);
 
     return {
       sessionId: session.sessionId,
@@ -493,7 +541,20 @@ export async function verifyLoginChallenge({ challengeId, token, displayName, co
 
 export async function getSessionContext(sessionId) {
   await ensureAuthStorage();
-  return buildSessionPayload(getDb(), getDb().prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId));
+  return transaction((database) => {
+    const session = database.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId);
+    if (!session || session.revoked_at) {
+      return null;
+    }
+    if (isPast(session.expires_at) || isSessionIdleExpired(session)) {
+      revokeSessionRecord(database, session.id);
+      return null;
+    }
+
+    const touchedAt = nowIso();
+    touchSessionRecord(database, session.id, touchedAt);
+    return buildSessionPayload(database, { ...session, last_seen_at: touchedAt });
+  });
 }
 
 export async function refreshSessionByRefreshToken(refreshToken) {
@@ -503,21 +564,32 @@ export async function refreshSessionByRefreshToken(refreshToken) {
     if (!session || session.revoked_at) {
       throw new HttpError(401, "AUTH_REFRESH_INVALID", "세션을 다시 시작해주세요");
     }
-    if (new Date(session.expires_at).getTime() < Date.now()) {
+    if (isPast(session.expires_at)) {
+      revokeSessionRecord(database, session.id);
       throw new HttpError(401, "AUTH_REFRESH_EXPIRED", "세션이 만료됐어요. 다시 로그인해주세요");
     }
+    if (isSessionIdleExpired(session)) {
+      revokeSessionRecord(database, session.id);
+      throw new HttpError(401, "AUTH_SESSION_IDLE_EXPIRED", "오래 사용하지 않아 세션이 종료됐어요. 다시 로그인해주세요");
+    }
 
-    const nextRefreshToken = crypto.randomBytes(24).toString("base64url");
-    database.prepare(`UPDATE sessions SET last_seen_at = ?, refresh_token_hash = ? WHERE id = ?`).run(nowIso(), sha256(nextRefreshToken), session.id);
-    const nextSession = database.prepare(`SELECT * FROM sessions WHERE id = ?`).get(session.id);
-    const context = buildSessionPayload(database, nextSession);
+    const rotatedAt = nowIso();
+    const nextSession = createSession(database, {
+      userId: session.user_id,
+      membershipId: session.membership_id,
+      companyId: session.company_id,
+      createdAt: rotatedAt
+    });
+    revokeSessionRecord(database, session.id, rotatedAt);
+
+    const context = buildSessionPayload(database, database.prepare(`SELECT * FROM sessions WHERE id = ?`).get(nextSession.sessionId));
     if (!context) {
       throw new HttpError(401, "AUTH_SESSION_INVALID", "세션이 유효하지 않아요. 다시 로그인해주세요");
     }
 
     return {
-      sessionId: session.id,
-      refreshToken: nextRefreshToken,
+      sessionId: nextSession.sessionId,
+      refreshToken: nextSession.refreshToken,
       user: {
         id: context.userId,
         email: context.email,
@@ -535,12 +607,205 @@ export async function refreshSessionByRefreshToken(refreshToken) {
 
 export async function revokeSession(sessionId) {
   await ensureAuthStorage();
-  getDb().prepare(`UPDATE sessions SET revoked_at = ? WHERE id = ?`).run(nowIso(), sessionId);
+  revokeSessionRecord(getDb(), sessionId);
+}
+
+export async function listSessionsByUser(userId) {
+  await ensureAuthStorage();
+  const database = getDb();
+  return database.prepare(`
+    SELECT sessions.id, sessions.company_id, sessions.membership_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at, sessions.created_at,
+           companies.name AS company_name, memberships.role
+    FROM sessions
+    JOIN memberships ON memberships.id = sessions.membership_id
+    JOIN companies ON companies.id = sessions.company_id
+    WHERE sessions.user_id = ?
+    ORDER BY COALESCE(sessions.last_seen_at, sessions.created_at) DESC
+  `).all(userId).map((item) => ({
+    id: item.id,
+    companyId: item.company_id,
+    companyName: item.company_name,
+    role: item.role,
+    membershipId: item.membership_id,
+    lastSeenAt: item.last_seen_at,
+    expiresAt: item.expires_at,
+    revokedAt: item.revoked_at,
+    createdAt: item.created_at
+  }));
+}
+
+export async function listRecentChallengesByEmail(email, limit = 5) {
+  await ensureAuthStorage();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) {
+    return [];
+  }
+
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 20) : 5;
+  const database = getDb();
+  return database.prepare(`
+    SELECT id, email, status, delivery_provider, delivery_status, expires_at, consumed_at, created_at
+    FROM login_challenges
+    WHERE email = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(normalizedEmail, safeLimit).map((item) => ({
+    id: item.id,
+    email: item.email,
+    status: item.status,
+    deliveryProvider: item.delivery_provider,
+    deliveryStatus: item.delivery_status,
+    expiresAt: item.expires_at,
+    consumedAt: item.consumed_at,
+    createdAt: item.created_at
+  }));
+}
+
+export async function revokeOwnedSession({ userId, sessionId }) {
+  await ensureAuthStorage();
+  return transaction((database) => {
+    const session = database.prepare(`SELECT * FROM sessions WHERE id = ? LIMIT 1`).get(sessionId);
+    if (!session || session.user_id !== userId) {
+      throw new HttpError(404, "AUTH_SESSION_NOT_FOUND", "세션 정보를 찾을 수 없어요.");
+    }
+    if (session.revoked_at) {
+      return {
+        id: session.id,
+        revokedAt: session.revoked_at
+      };
+    }
+    const revokedAt = nowIso();
+    revokeSessionRecord(database, session.id, revokedAt);
+    return {
+      id: session.id,
+      revokedAt
+    };
+  });
 }
 
 export async function revokeSessionByRefreshToken(refreshToken) {
   await ensureAuthStorage();
-  getDb().prepare(`UPDATE sessions SET revoked_at = ? WHERE refresh_token_hash = ?`).run(nowIso(), sha256(refreshToken));
+  const database = getDb();
+  const session = database.prepare(`SELECT * FROM sessions WHERE refresh_token_hash = ?`).get(sha256(refreshToken));
+  if (session) {
+    revokeSessionRecord(database, session.id);
+  }
+}
+
+function normalizeProfileDisplayName(value, fallbackEmail = "") {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    throw new HttpError(422, "PROFILE_DISPLAY_NAME_REQUIRED", "표시 이름을 입력해주세요.");
+  }
+  if (normalized.length > 60) {
+    throw new HttpError(422, "PROFILE_DISPLAY_NAME_TOO_LONG", "표시 이름은 60자 이내로 입력해주세요.");
+  }
+  return normalized || String(fallbackEmail || "").split("@")[0];
+}
+
+function normalizeProfilePhoneNumber(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length > 30) {
+    throw new HttpError(422, "PROFILE_PHONE_TOO_LONG", "연락처는 30자 이내로 입력해주세요.");
+  }
+  return normalized;
+}
+
+function assertInvitationRole(role) {
+  if (!["MANAGER", "STAFF"].includes(role)) {
+    throw new HttpError(422, "INVITATION_ROLE_INVALID", "초대 역할이 올바르지 않습니다.");
+  }
+}
+
+function buildInvitationRecord(database, { companyId, companyName, email, role, invitedByUserId }) {
+  const invitationToken = crypto.randomBytes(24).toString("base64url");
+  const invitation = {
+    id: createId("invite"),
+    companyId,
+    companyName,
+    email,
+    role,
+    invitedByUserId,
+    status: "ISSUED",
+    tokenHash: sha256(invitationToken),
+    expiresAt: plusDays(7),
+    acceptedAt: null,
+    lastSentAt: nowIso(),
+    createdAt: nowIso()
+  };
+
+  database.prepare(`
+    INSERT INTO invitations (
+      id, company_id, email, role, invited_by_user_id, status, token_hash,
+      expires_at, accepted_at, last_sent_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    invitation.id,
+    invitation.companyId,
+    invitation.email,
+    invitation.role,
+    invitation.invitedByUserId,
+    invitation.status,
+    invitation.tokenHash,
+    invitation.expiresAt,
+    invitation.acceptedAt,
+    invitation.lastSentAt,
+    invitation.createdAt
+  );
+
+  return {
+    id: invitation.id,
+    email: invitation.email,
+    role: invitation.role,
+    companyId: invitation.companyId,
+    companyName: invitation.companyName,
+    expiresAt: invitation.expiresAt,
+    invitationToken
+  };
+}
+
+function mapInvitationRow(item) {
+  return {
+    id: item.id,
+    email: item.email,
+    role: item.role,
+    status: item.status,
+    expiresAt: item.expires_at,
+    acceptedAt: item.accepted_at,
+    lastSentAt: item.last_sent_at,
+    createdAt: item.created_at
+  };
+}
+
+export async function updateUserProfile({ userId, displayName, phoneNumber }) {
+  await ensureAuthStorage();
+  return transaction((database) => {
+    const user = database.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId);
+    if (!user) {
+      throw new HttpError(404, "USER_NOT_FOUND", "계정 정보를 찾을 수 없어요.");
+    }
+
+    const nextDisplayName = normalizeProfileDisplayName(displayName, user.email);
+    const nextPhoneNumber = normalizeProfilePhoneNumber(phoneNumber);
+    const updatedAt = nowIso();
+
+    database.prepare(`
+      UPDATE users
+      SET display_name = ?, phone_number = ?, updated_at = ?
+      WHERE id = ?
+    `).run(nextDisplayName, nextPhoneNumber, updatedAt, userId);
+
+    return {
+      id: user.id,
+      email: user.email,
+      displayName: nextDisplayName,
+      phoneNumber: nextPhoneNumber,
+      updatedAt
+    };
+  });
 }
 
 export async function listCompaniesForUser(userId) {
@@ -555,6 +820,10 @@ export async function switchSessionCompany({ sessionId, userId, companyId }) {
     if (!session || session.user_id !== userId || session.revoked_at) {
       throw new HttpError(401, "AUTH_SESSION_INVALID", "세션이 유효하지 않아요.");
     }
+    if (isPast(session.expires_at) || isSessionIdleExpired(session)) {
+      revokeSessionRecord(database, session.id);
+      throw new HttpError(401, "AUTH_SESSION_INVALID", "세션이 만료되어 다시 로그인이 필요합니다.");
+    }
 
     const membership = database.prepare(`
       SELECT memberships.*, companies.name AS company_name
@@ -567,7 +836,8 @@ export async function switchSessionCompany({ sessionId, userId, companyId }) {
       throw new HttpError(403, "COMPANY_ACCESS_DENIED", "접근할 수 없는 업체입니다.");
     }
 
-    database.prepare(`UPDATE sessions SET company_id = ?, membership_id = ?, last_seen_at = ? WHERE id = ?`).run(companyId, membership.id, nowIso(), sessionId);
+    const touchedAt = nowIso();
+    database.prepare(`UPDATE sessions SET company_id = ?, membership_id = ?, last_seen_at = ? WHERE id = ?`).run(companyId, membership.id, touchedAt, sessionId);
 
     return {
       company: {
@@ -586,9 +856,7 @@ export async function createInvitation({ companyId, email, role, invitedByUserId
   if (!normalizedEmail) {
     throw new HttpError(422, "INVITATION_EMAIL_REQUIRED", "초대할 이메일이 필요합니다.");
   }
-  if (!["MANAGER", "STAFF"].includes(role)) {
-    throw new HttpError(422, "INVITATION_ROLE_INVALID", "초대 역할이 올바르지 않습니다.");
-  }
+  assertInvitationRole(role);
 
   return transaction((database) => {
     const company = database.prepare(`SELECT * FROM companies WHERE id = ?`).get(companyId);
@@ -607,50 +875,79 @@ export async function createInvitation({ companyId, email, role, invitedByUserId
       throw new HttpError(429, "INVITATION_RATE_LIMITED", "잠시 후 다시 초대해주세요.");
     }
 
-    const invitationToken = crypto.randomBytes(24).toString("base64url");
-    const invitation = {
-      id: createId("invite"),
+    return buildInvitationRecord(database, {
       companyId,
+      companyName: company.name,
       email: normalizedEmail,
       role,
-      invitedByUserId,
-      status: "ISSUED",
-      tokenHash: sha256(invitationToken),
-      expiresAt: plusDays(7),
-      acceptedAt: null,
-      lastSentAt: nowIso(),
-      createdAt: nowIso(),
-      companyName: company.name
-    };
+      invitedByUserId
+    });
+  });
+}
+
+export async function reissueInvitation({ companyId, invitationId, invitedByUserId }) {
+  await ensureAuthStorage();
+  return transaction((database) => {
+    const invitation = database.prepare(`
+      SELECT invitations.*, companies.name AS company_name
+      FROM invitations
+      JOIN companies ON companies.id = invitations.company_id
+      WHERE invitations.id = ? AND invitations.company_id = ?
+      LIMIT 1
+    `).get(invitationId, companyId);
+
+    if (!invitation) {
+      throw new HttpError(404, "INVITATION_NOT_FOUND", "초대 정보를 찾을 수 없어요.");
+    }
+    if (invitation.status !== "ISSUED") {
+      throw new HttpError(409, "INVITATION_NOT_ACTIVE", "다시 보낼 수 있는 초대 상태가 아닙니다.");
+    }
+    if (Date.now() - new Date(invitation.last_sent_at).getTime() < 60 * 1000) {
+      throw new HttpError(429, "INVITATION_RESEND_RATE_LIMITED", "방금 초대를 보냈습니다. 잠시 후 다시 시도해주세요.");
+    }
 
     database.prepare(`
-      INSERT INTO invitations (
-        id, company_id, email, role, invited_by_user_id, status, token_hash,
-        expires_at, accepted_at, last_sent_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      invitation.id,
-      invitation.companyId,
-      invitation.email,
-      invitation.role,
-      invitation.invitedByUserId,
-      invitation.status,
-      invitation.tokenHash,
-      invitation.expiresAt,
-      invitation.acceptedAt,
-      invitation.lastSentAt,
-      invitation.createdAt
-    );
+      UPDATE invitations
+      SET status = 'REVOKED'
+      WHERE id = ?
+    `).run(invitation.id);
 
-    return {
-      id: invitation.id,
+    return buildInvitationRecord(database, {
+      companyId,
+      companyName: invitation.company_name,
       email: invitation.email,
       role: invitation.role,
-      companyId: invitation.companyId,
-      companyName: invitation.companyName,
-      expiresAt: invitation.expiresAt,
-      invitationToken
-    };
+      invitedByUserId: invitedByUserId || invitation.invited_by_user_id
+    });
+  });
+}
+
+export async function revokeInvitation({ companyId, invitationId }) {
+  await ensureAuthStorage();
+  return transaction((database) => {
+    const invitation = database.prepare(`
+      SELECT *
+      FROM invitations
+      WHERE id = ? AND company_id = ?
+      LIMIT 1
+    `).get(invitationId, companyId);
+
+    if (!invitation) {
+      throw new HttpError(404, "INVITATION_NOT_FOUND", "초대 정보를 찾을 수 없어요.");
+    }
+    if (invitation.status === "ACCEPTED") {
+      throw new HttpError(409, "INVITATION_ALREADY_ACCEPTED", "이미 수락된 초대는 취소할 수 없습니다.");
+    }
+    if (invitation.status !== "REVOKED") {
+      database.prepare(`
+        UPDATE invitations
+        SET status = 'REVOKED'
+        WHERE id = ?
+      `).run(invitation.id);
+      invitation.status = "REVOKED";
+    }
+
+    return mapInvitationRow(invitation);
   });
 }
 
@@ -682,15 +979,5 @@ export async function listInvitationsByCompany(companyId) {
     FROM invitations
     WHERE company_id = ?
     ORDER BY created_at DESC
-  `).all(companyId).map((item) => ({
-    id: item.id,
-    email: item.email,
-    role: item.role,
-    status: item.status,
-    expiresAt: item.expires_at,
-    acceptedAt: item.accepted_at,
-    lastSentAt: item.last_sent_at,
-    createdAt: item.created_at
-  }));
+  `).all(companyId).map((item) => mapInvitationRow(item));
 }
-
