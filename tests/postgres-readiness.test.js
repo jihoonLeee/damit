@@ -15,6 +15,18 @@ test("postgres readiness fails clearly when DATABASE_URL is missing", () => {
   assert.ok(report.errors.some((item) => item.key === "DATABASE_URL"));
 });
 
+test("postgres readiness rejects a Supabase dashboard https URL", () => {
+  const report = assessPostgresReadiness({
+    DATABASE_URL: "https://abcdefghijklmnop.supabase.co",
+    POSTGRES_SSL_MODE: "require",
+    POSTGRES_APPLICATION_NAME: "damit-production",
+    POSTGRES_POOL_MAX: "10"
+  });
+
+  assert.equal(report.ok, false);
+  assert.ok(report.errors.some((item) => item.reason.includes("postgres://")));
+});
+
 test("postgres readiness recognizes a valid Supabase-style setup", () => {
   const report = assessPostgresReadiness({
     DATABASE_URL: "postgres://postgres:secret@db.abcdefghijkl.supabase.co:5432/postgres",

@@ -30,6 +30,13 @@ You will need:
 - `POSTGRES_APPLICATION_NAME`
 - `POSTGRES_POOL_MAX`
 
+Important:
+
+- do not use the Supabase dashboard project URL such as `https://<project-ref>.supabase.co`
+- use the Postgres connection string from the `Connect` button in Supabase
+- for a persistent server that may only have IPv4 access, PM recommends the `pooler session mode` connection string first
+- use the direct connection string only when your environment supports IPv6 well
+
 Recommended:
 
 ```env

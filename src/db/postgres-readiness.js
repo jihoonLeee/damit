@@ -38,6 +38,12 @@ export function assessPostgresReadiness(envLike = process.env) {
   } else {
     try {
       parsedDatabaseUrl = new URL(databaseUrl);
+      if (!["postgres:", "postgresql:"].includes(parsedDatabaseUrl.protocol)) {
+        errors.push({
+          key: "DATABASE_URL",
+          reason: "connection string must use postgres:// or postgresql://, not a dashboard https URL"
+        });
+      }
       provider = looksSupabaseHost(parsedDatabaseUrl.hostname) ? "SUPABASE" : "CUSTOM_POSTGRES";
     } catch {
       errors.push({ key: "DATABASE_URL", reason: "connection string is not a valid URL" });
