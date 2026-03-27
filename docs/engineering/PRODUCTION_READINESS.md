@@ -222,6 +222,22 @@ Keep append-only traces for:
 - an extra stale `cloudflared` user process caused mixed routing until it was stopped
 - the remaining optional proof for this batch is rollback back to SQLite after preview testing
 
+## Latest PM preview acceptance gate note
+
+- preview Postgres now has a script-only QA session bootstrap path
+- the bootstrap path does not add a new public route and does not require `AUTH_DEBUG_LINKS=true`
+- browser proof now confirms authenticated preview access on:
+  - `/home`
+  - `/account`
+  - `/app`
+  - `/ops`
+- this moves the remaining risk from `how do we log in on preview?` to `when do we complete rollback proof and root cutover evaluation?`
+- one UX-quality issue was also surfaced during browser review:
+  - external Google Fonts are blocked by current CSP, so live typography is falling back more than intended
+- PM judgment remains:
+  - `preview Postgres acceptance tooling GO`
+  - `root cutover HOLD`
+
 ## Latest PM account surfaces note
 
 - the next product-facing maturity step is not more infrastructure, but clearer account surfaces

@@ -23,6 +23,7 @@
 - preview Postgres smoke: `bash deploy/homelab/smoke-postgres-runtime.sh`
 - preview Postgres checksum repair: `node scripts/repair-postgres-migration-checksums.mjs --env-file=deploy/homelab/.env.preview-postgres`
 - preview Postgres rollback: `bash deploy/homelab/rollback-to-sqlite.sh`
+- preview QA bootstrap: `npm run qa:preview:bootstrap:production-local`
 
 ## Current environment model
 
@@ -36,8 +37,8 @@
 ### Preview
 
 - current runtime: homelab preview on `https://preview.damit.kr`
-- current DB mode: SQLite
-- next DB target: Supabase Free Postgres via `DATABASE_URL`
+- current DB mode: Postgres rehearsal on preview
+- root still remains on SQLite
 - current mail mode: `RESEND`
 - current auth mode: `SameSite=Strict` session cookies, refresh CSRF required, trusted-origin enforcement ON
 
@@ -92,7 +93,8 @@ Expected current result:
 
 - health is green
 - preview app is reachable
-- postgres preflight returns `POSTGRES_NOT_CONFIGURED` until Supabase-backed preview rehearsal begins
+- preview health reports `storageEngine=POSTGRES`
+- root health reports `storageEngine=SQLITE`
 
 ## Supabase attach checklist
 
@@ -122,6 +124,22 @@ Expected current result:
 9. point `preview.damit.kr` back to `127.0.0.1:3210`
 10. confirm preview is back on SQLite
 
+## Preview Postgres acceptance gate
+
+1. create an authenticated QA artifact without enabling debug links:
+   - `npm run qa:preview:bootstrap:production-local`
+2. confirm the artifact targets `https://preview.damit.kr`
+3. use the returned cookie bundle for browser QA
+4. verify at minimum:
+   - `/home`
+   - `/account`
+   - `/app`
+   - `/ops`
+5. if invite/join proof is needed, run the bootstrap script again with:
+   - `--invite-email=...`
+   - `--invite-display-name=...`
+6. do not discuss root Postgres cutover until preview acceptance and rollback are both proven
+
 ### Env hygiene note
 
 - when updating homelab env files, prefer helper scripts that replace an existing key instead of appending another line
@@ -131,6 +149,21 @@ Expected current result:
 
 - before switching preview between `3210` and `3211`, confirm there is only one active `cloudflared` process for the tunnel
 - a stale user-run `cloudflared` process can keep serving an old ingress mapping even after the systemd service is restarted
+
+## Preview QA bootstrap
+
+1. keep preview on Postgres
+2. keep `AUTH_DEBUG_LINKS=false`
+3. run:
+   - `npm run qa:preview:bootstrap:production-local`
+4. note the generated JSON artifact path
+5. use `owner.cookies` or `invitee.cookies` for browser-based preview QA
+6. verify:
+   - `/home`
+   - `/account`
+   - `/app`
+   - `/ops`
+7. do not add any public runtime shortcut for QA
 
 ## Incident priorities
 
