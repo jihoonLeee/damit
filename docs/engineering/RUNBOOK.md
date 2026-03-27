@@ -91,8 +91,10 @@ Expected current result:
 3. set `DATABASE_URL` on the Fly staging app
 4. set `POSTGRES_SSL_MODE=require`
 5. set `POSTGRES_APPLICATION_NAME`
-6. run `npm run pg:preflight`
-7. only after preflight is green, proceed with migration and adapter work
+6. run `npm run pg:readiness`
+7. run `npm run pg:preflight`
+8. run `npm run migrate:status`
+9. only after readiness and preflight are green, proceed with migration and runtime cutover discussion
 
 ## Incident priorities
 

@@ -19,6 +19,7 @@
     "test:auth": "node tests/auth-foundation.test.js",
     "test:beta": "node tests/beta-workspace.test.js",
     "test:confirm": "node tests/customer-confirmation.test.js",
+    "pg:readiness": "node scripts/postgres-readiness-check.mjs",
     "pg:preflight": "node scripts/postgres-preflight.mjs",
     "env:check:staging": "node scripts/runtime-env-check.mjs --profile=staging",
     "env:check:production": "node scripts/runtime-env-check.mjs --profile=production",
