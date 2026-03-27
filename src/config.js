@@ -60,6 +60,14 @@ export const config = {
   authChallengeTtlMinutes: readInteger(process.env.AUTH_CHALLENGE_TTL_MINUTES, 15),
   authEnforceTrustedOrigin: readBoolean(process.env.AUTH_ENFORCE_TRUSTED_ORIGIN, nodeEnv === "production"),
   authDebugLinks: readBoolean(process.env.AUTH_DEBUG_LINKS, nodeEnv !== "production"),
+  authChallengeIpRateLimitCount: readInteger(process.env.AUTH_CHALLENGE_IP_RATE_LIMIT_COUNT, 5),
+  authChallengeIpRateLimitWindowSeconds: readInteger(process.env.AUTH_CHALLENGE_IP_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
+  authVerifyRateLimitCount: readInteger(process.env.AUTH_VERIFY_RATE_LIMIT_COUNT, 12),
+  authVerifyRateLimitWindowSeconds: readInteger(process.env.AUTH_VERIFY_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
+  publicConfirmViewRateLimitCount: readInteger(process.env.PUBLIC_CONFIRM_VIEW_RATE_LIMIT_COUNT, 30),
+  publicConfirmViewRateLimitWindowSeconds: readInteger(process.env.PUBLIC_CONFIRM_VIEW_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
+  publicConfirmAckRateLimitCount: readInteger(process.env.PUBLIC_CONFIRM_ACK_RATE_LIMIT_COUNT, 6),
+  publicConfirmAckRateLimitWindowSeconds: readInteger(process.env.PUBLIC_CONFIRM_ACK_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
   systemAdminEmails: readList(process.env.SYSTEM_ADMIN_EMAILS),
   ownerId: process.env.OWNER_ID || "system_owner"
 };

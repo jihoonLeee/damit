@@ -50,6 +50,17 @@
 - session cookies default to `SameSite=Strict`
 - idle timeout default is 12 hours
 - login challenge TTL default is 15 minutes
+- auth challenge public rate limit default is `5 / 10 minutes / IP`
+- auth verify public rate limit default is `12 / 10 minutes / IP`
+- customer confirmation read public rate limit default is `30 / 10 minutes / IP`
+- customer confirmation acknowledge public rate limit default is `6 / 10 minutes / IP`
+
+## Public abuse hardening check
+
+1. hit `/api/v1/auth/challenges` repeatedly from the same IP and confirm `429`
+2. hit `/api/v1/public/confirm/:token` repeatedly from the same IP and confirm `429`
+3. confirm `Retry-After` is present on rate-limited responses
+4. keep real mail cutover disabled until sender-domain verification is complete
 
 ## Staging checks
 

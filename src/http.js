@@ -1,11 +1,12 @@
 ﻿import crypto from "node:crypto";
 
 export class HttpError extends Error {
-  constructor(status, code, message, fieldErrors) {
+  constructor(status, code, message, fieldErrors, headers) {
     super(message);
     this.status = status;
     this.code = code;
     this.fieldErrors = fieldErrors;
+    this.headers = headers || null;
   }
 }
 
@@ -103,5 +104,6 @@ export function sendError(response, requestId, error) {
     payload.error.fieldErrors = error.fieldErrors;
   }
 
-  jsonNoStore(response, status, payload);
+  const extraHeaders = error instanceof HttpError && error.headers ? error.headers : {};
+  jsonNoStore(response, status, payload, extraHeaders);
 }

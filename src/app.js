@@ -36,6 +36,7 @@ import { sendInvitationEmail, sendMagicLinkEmail } from "./mail-gateway.js";
 import { createRepositoryBundle } from "./repositories/createRepositoryBundle.js";
 import { normalizePathname, serveStaticRequest } from "./http/static-routes.js";
 import { handleSystemApiRequest } from "./http/system-routes.js";
+import { assertPublicRateLimit } from "./security/public-rate-limit.js";
 
 async function ensureOperationalSchemas(repositories) {
   if (repositories.engine !== "SQLITE") {
@@ -119,6 +120,14 @@ async function handleApiRequest(request, response, repositories) {
 
   const publicConfirmationMatch = pathname.match(/^\/api\/v1\/public\/confirm\/([^/]+)$/);
   if (request.method === "GET" && publicConfirmationMatch) {
+    assertPublicRateLimit({
+      key: "public-confirm-view",
+      identifier: getRequestIp(request),
+      limit: config.publicConfirmViewRateLimitCount,
+      windowSeconds: config.publicConfirmViewRateLimitWindowSeconds,
+      code: "PUBLIC_CONFIRM_VIEW_RATE_LIMITED",
+      message: "고객 확인 링크 요청이 너무 많아요. 잠시 후 다시 시도해 주세요."
+    });
     const token = decodeURIComponent(publicConfirmationMatch[1]);
     const link = await repositories.customerConfirmationRepository.getViewByToken({
       token,
@@ -133,6 +142,14 @@ async function handleApiRequest(request, response, repositories) {
   const publicConfirmationAckMatch = pathname.match(/^\/api\/v1\/public\/confirm\/([^/]+)\/acknowledge$/);
   if (request.method === "POST" && publicConfirmationAckMatch) {
     assertTrustedOrigin(request);
+    assertPublicRateLimit({
+      key: "public-confirm-ack",
+      identifier: getRequestIp(request),
+      limit: config.publicConfirmAckRateLimitCount,
+      windowSeconds: config.publicConfirmAckRateLimitWindowSeconds,
+      code: "PUBLIC_CONFIRM_ACK_RATE_LIMITED",
+      message: "고객 확인 완료 요청이 너무 많아요. 잠시 후 다시 시도해 주세요."
+    });
     const token = decodeURIComponent(publicConfirmationAckMatch[1]);
     const payload = await readJsonBody(request);
     validateCustomerConfirmationAcknowledgement(payload);
@@ -159,6 +176,14 @@ async function handleApiRequest(request, response, repositories) {
 
   if (request.method === "POST" && pathname === "/api/v1/auth/challenges") {
     assertTrustedOrigin(request);
+    assertPublicRateLimit({
+      key: "auth-challenge",
+      identifier: getRequestIp(request),
+      limit: config.authChallengeIpRateLimitCount,
+      windowSeconds: config.authChallengeIpRateLimitWindowSeconds,
+      code: "AUTH_CHALLENGE_IP_RATE_LIMITED",
+      message: "로그인 링크 요청이 너무 많아요. 잠시 후 다시 시도해 주세요."
+    });
     const payload = await readJsonBody(request);
     const email = String(payload.email || "").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -217,6 +242,14 @@ async function handleApiRequest(request, response, repositories) {
 
   if (request.method === "POST" && pathname === "/api/v1/auth/verify") {
     assertTrustedOrigin(request);
+    assertPublicRateLimit({
+      key: "auth-verify",
+      identifier: getRequestIp(request),
+      limit: config.authVerifyRateLimitCount,
+      windowSeconds: config.authVerifyRateLimitWindowSeconds,
+      code: "AUTH_VERIFY_RATE_LIMITED",
+      message: "로그인 확인 요청이 너무 많아요. 잠시 후 다시 시도해 주세요."
+    });
     const payload = await readJsonBody(request);
     if (!payload.challengeId || !payload.token) {
       throw new HttpError(422, "AUTH_VERIFY_INVALID", "\uB85C\uADF8\uC778 \uB9C1\uD06C \uC815\uBCF4\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4.");

@@ -13,6 +13,7 @@ process.chdir(tempRoot);
 
 const { createApp } = await import("../src/app.js");
 const { config } = await import("../src/config.js");
+const { resetPublicRateLimitState } = await import("../src/security/public-rate-limit.js");
 
 config.rootDir = tempRoot;
 config.publicDir = path.join(tempRoot, "public");
@@ -55,8 +56,66 @@ function writeSessionHeaders(extra = {}) {
   };
 }
 
+async function createConfirmationToken(seed) {
+  const formData = new FormData();
+  formData.append("primaryReason", "CONTAMINATION");
+  formData.append("secondaryReason", "NICOTINE");
+  formData.append("note", `confirmation setup ${seed}`);
+  formData.append("photos[]", new File([new Uint8Array([137, 80, 78, 71])], `sample-${seed}.png`, { type: "image/png" }));
+
+  const fieldRecordResponse = await fetch(`${baseUrl}/api/v1/field-records`, {
+    method: "POST",
+    headers: writeSessionHeaders(),
+    body: formData
+  });
+  const fieldRecord = await fieldRecordResponse.json();
+
+  const jobCaseResponse = await fetch(`${baseUrl}/api/v1/job-cases`, {
+    method: "POST",
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      customerLabel: `Customer ${seed}`,
+      contactMemo: `Memo ${seed}`,
+      siteLabel: `Site ${seed}`,
+      originalQuoteAmount: 250000
+    })
+  });
+  const jobCase = await jobCaseResponse.json();
+
+  await fetch(`${baseUrl}/api/v1/field-records/${fieldRecord.id}/link-job-case`, {
+    method: "POST",
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ jobCaseId: jobCase.id })
+  });
+
+  await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/quote`, {
+    method: "PATCH",
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ revisedQuoteAmount: 320000 })
+  });
+
+  await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/draft-message`, {
+    method: "POST",
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ tone: "CUSTOMER_MESSAGE" })
+  });
+
+  const createLinkResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCase.id}/customer-confirmation-links`, {
+    method: "POST",
+    headers: writeSessionHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ expiresInHours: 72 })
+  });
+  const createdLink = await createLinkResponse.json();
+  const confirmUrl = new URL(createdLink.confirmationUrl, baseUrl);
+  return decodeURIComponent(confirmUrl.pathname.replace(/^\/confirm\//, ""));
+}
+
 test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
+});
+
+test.afterEach(() => {
+  resetPublicRateLimitState();
 });
 
 test("customer confirmation link can be issued, viewed, acknowledged, and exposed in detail", async () => {
@@ -153,4 +212,58 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
   const timeline = await timelineResponse.json();
   assert.ok(timeline.items.some((item) => item.type === "CUSTOMER_CONFIRMATION_LINK_CREATED"));
   assert.ok(timeline.items.some((item) => item.type === "CUSTOMER_CONFIRMATION_ACKNOWLEDGED"));
+});
+
+test("public confirmation endpoints are rate limited by request IP", async () => {
+  const previousViewCount = config.publicConfirmViewRateLimitCount;
+  const previousViewWindow = config.publicConfirmViewRateLimitWindowSeconds;
+  const previousAckCount = config.publicConfirmAckRateLimitCount;
+  const previousAckWindow = config.publicConfirmAckRateLimitWindowSeconds;
+  config.publicConfirmViewRateLimitCount = 1;
+  config.publicConfirmViewRateLimitWindowSeconds = 600;
+  config.publicConfirmAckRateLimitCount = 1;
+  config.publicConfirmAckRateLimitWindowSeconds = 600;
+
+  try {
+    const viewToken = await createConfirmationToken("view-limit");
+    const firstView = await fetch(`${baseUrl}/api/v1/public/confirm/${encodeURIComponent(viewToken)}`, {
+      headers: { "x-forwarded-for": "203.0.113.31" }
+    });
+    const secondView = await fetch(`${baseUrl}/api/v1/public/confirm/${encodeURIComponent(viewToken)}`, {
+      headers: { "x-forwarded-for": "203.0.113.31" }
+    });
+
+    assert.equal(firstView.status, 200);
+    assert.equal(secondView.status, 429);
+    assert.equal((await secondView.json()).error.code, "PUBLIC_CONFIRM_VIEW_RATE_LIMITED");
+    assert.equal(secondView.headers.get("retry-after"), "600");
+
+    const ackToken = await createConfirmationToken("ack-limit");
+    const firstAck = await fetch(`${baseUrl}/api/v1/public/confirm/${encodeURIComponent(ackToken)}/acknowledge`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-forwarded-for": "203.0.113.32"
+      },
+      body: JSON.stringify({ confirmationNote: "Looks good" })
+    });
+    const secondAck = await fetch(`${baseUrl}/api/v1/public/confirm/${encodeURIComponent(ackToken)}/acknowledge`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-forwarded-for": "203.0.113.32"
+      },
+      body: JSON.stringify({ confirmationNote: "Looks good" })
+    });
+
+    assert.equal(firstAck.status, 200);
+    assert.equal(secondAck.status, 429);
+    assert.equal((await secondAck.json()).error.code, "PUBLIC_CONFIRM_ACK_RATE_LIMITED");
+    assert.equal(secondAck.headers.get("retry-after"), "600");
+  } finally {
+    config.publicConfirmViewRateLimitCount = previousViewCount;
+    config.publicConfirmViewRateLimitWindowSeconds = previousViewWindow;
+    config.publicConfirmAckRateLimitCount = previousAckCount;
+    config.publicConfirmAckRateLimitWindowSeconds = previousAckWindow;
+  }
 });

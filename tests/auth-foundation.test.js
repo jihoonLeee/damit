@@ -12,6 +12,7 @@ process.chdir(tempRoot);
 
 const { createApp } = await import("../src/app.js");
 const { config } = await import("../src/config.js");
+const { resetPublicRateLimitState } = await import("../src/security/public-rate-limit.js");
 
 config.rootDir = tempRoot;
 config.publicDir = path.join(tempRoot, "public");
@@ -109,6 +110,10 @@ function backdateInvitation(invitationId, minutes = 2) {
 
 test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
+});
+
+test.afterEach(() => {
+  resetPublicRateLimitState();
 });
 
 test("auth challenge returns a dev magic link and requires company setup on first verify", async () => {
@@ -211,6 +216,49 @@ test("auth challenge hides debug link when debug mode is disabled", async () => 
     assert.match(payload.delivery.targetMasked, /@/);
   } finally {
     config.authDebugLinks = true;
+  }
+});
+
+test("auth challenge is rate limited by request IP", async () => {
+  const previousCount = config.authChallengeIpRateLimitCount;
+  const previousWindow = config.authChallengeIpRateLimitWindowSeconds;
+  config.authChallengeIpRateLimitCount = 2;
+  config.authChallengeIpRateLimitWindowSeconds = 600;
+
+  try {
+    const first = await issueChallenge("ip-limit-1@example.com", {}, { "x-forwarded-for": "203.0.113.10" });
+    const second = await issueChallenge("ip-limit-2@example.com", {}, { "x-forwarded-for": "203.0.113.10" });
+    const third = await issueChallenge("ip-limit-3@example.com", {}, { "x-forwarded-for": "203.0.113.10" });
+
+    assert.equal(first.response.status, 201);
+    assert.equal(second.response.status, 201);
+    assert.equal(third.response.status, 429);
+    assert.equal(third.payload.error.code, "AUTH_CHALLENGE_IP_RATE_LIMITED");
+    assert.equal(third.response.headers.get("retry-after"), "600");
+  } finally {
+    config.authChallengeIpRateLimitCount = previousCount;
+    config.authChallengeIpRateLimitWindowSeconds = previousWindow;
+  }
+});
+
+test("auth verify is rate limited by request IP", async () => {
+  const previousCount = config.authVerifyRateLimitCount;
+  const previousWindow = config.authVerifyRateLimitWindowSeconds;
+  config.authVerifyRateLimitCount = 1;
+  config.authVerifyRateLimitWindowSeconds = 600;
+
+  try {
+    const challenge = await issueChallenge("verify-limit@example.com");
+    const firstVerify = await verifyViaLink(challenge.payload.debugMagicLink, {}, { "x-forwarded-for": "203.0.113.20" });
+    const secondVerify = await verifyViaLink(challenge.payload.debugMagicLink, {}, { "x-forwarded-for": "203.0.113.20" });
+
+    assert.equal(firstVerify.response.status, 409);
+    assert.equal(secondVerify.response.status, 429);
+    assert.equal(secondVerify.payload.error.code, "AUTH_VERIFY_RATE_LIMITED");
+    assert.equal(secondVerify.response.headers.get("retry-after"), "600");
+  } finally {
+    config.authVerifyRateLimitCount = previousCount;
+    config.authVerifyRateLimitWindowSeconds = previousWindow;
   }
 });
 

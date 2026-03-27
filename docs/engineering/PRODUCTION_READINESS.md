@@ -159,6 +159,13 @@ Keep append-only traces for:
 - login and invitation flows now read as real email-delivery flows rather than debug-link-first flows
 - live Resend proof still depends on environment credentials and remains a separate operational check
 
+## Latest PM public rate-limit note
+
+- public login and customer confirmation routes now have explicit IP-based rate limits
+- rate-limited responses return `429` and `Retry-After`
+- this closes one of the biggest previously unproven public-abuse gaps
+- public production still remains `HOLD` until mail cutover, broader monitoring, and stronger recovery evidence are also complete
+
 
 ## Latest PM ops readiness note
 
