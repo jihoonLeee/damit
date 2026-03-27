@@ -18,6 +18,18 @@ const loginSignal = document.querySelector("#account-login-signal");
 const loginSignalCopy = document.querySelector("#account-login-signal-copy");
 const internalStatus = document.querySelector("#account-internal-status");
 const internalMeta = document.querySelector("#account-internal-meta");
+const settlementSection = document.querySelector("#account-settlement-section");
+const settlementCopy = document.querySelector("#account-settlement-copy");
+const settlementTotalAmount = document.querySelector("#account-settlement-total-amount");
+const settlementMonthAmount = document.querySelector("#account-settlement-month-amount");
+const settlementTotalCount = document.querySelector("#account-settlement-total-count");
+const settlementMonthCount = document.querySelector("#account-settlement-month-count");
+const settlementTotalCopy = document.querySelector("#account-settlement-total-copy");
+const settlementMonthCopy = document.querySelector("#account-settlement-month-copy");
+const settlementTotalCountCopy = document.querySelector("#account-settlement-total-count-copy");
+const settlementMonthCountCopy = document.querySelector("#account-settlement-month-count-copy");
+const settlementLatestMeta = document.querySelector("#account-settlement-latest-meta");
+const settlementRecent = document.querySelector("#account-settlement-recent");
 const companySwitcher = document.querySelector("#account-company-switcher");
 const switchButton = document.querySelector("#account-switch-button");
 const companyNote = document.querySelector("#account-company-note");
@@ -91,6 +103,14 @@ function formatDateTime(value) {
   return date.toLocaleString("ko-KR");
 }
 
+function formatMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return "-";
+  }
+  return `${new Intl.NumberFormat("ko-KR").format(amount)}원`;
+}
+
 function isPast(value) {
   return Boolean(value) && new Date(value).getTime() < Date.now();
 }
@@ -141,6 +161,67 @@ function renderAttentionList(items = []) {
   attentionList.classList.remove("hidden");
   attentionList.innerHTML = items
     .map((item) => `<div class="account-attention-item">${escapeHtml(item)}</div>`)
+    .join("");
+}
+
+function renderSettlementSummary(summary, company, role) {
+  if (!company || role !== "OWNER") {
+    settlementSection.classList.add("hidden");
+    settlementRecent.className = "home-list empty-state";
+    settlementRecent.textContent = "";
+    return;
+  }
+
+  settlementSection.classList.remove("hidden");
+
+  if (!summary || !summary.agreementCountTotal) {
+    settlementCopy.textContent = `${company.name} 기준 최종 합의 금액이 아직 쌓이지 않았습니다. 작업 화면에서 합의 기록이 저장되면 여기서 회사 단위로 다시 볼 수 있습니다.`;
+    settlementTotalAmount.textContent = formatMoney(0);
+    settlementMonthAmount.textContent = formatMoney(0);
+    settlementTotalCount.textContent = "0";
+    settlementMonthCount.textContent = "0";
+    settlementTotalCopy.textContent = "아직 누적된 최종 합의 금액이 없습니다.";
+    settlementMonthCopy.textContent = "이번 달에 확정된 합의 금액이 아직 없습니다.";
+    settlementTotalCountCopy.textContent = "누적 합의 건수가 아직 없습니다.";
+    settlementMonthCountCopy.textContent = "이번 달 합의 건수가 아직 없습니다.";
+    settlementLatestMeta.textContent = "아직 최근 합의 내역이 없습니다.";
+    settlementRecent.className = "home-list empty-state";
+    settlementRecent.innerHTML = '아직 합의 완료로 기록된 작업 건이 없습니다. <a class="inline-link" href="/app">작업 화면</a>에서 합의 기록을 저장하면 여기서 누적 금액과 최근 내역을 함께 볼 수 있습니다.';
+    return;
+  }
+
+  settlementCopy.textContent = `${company.name}의 최종 합의 금액을 누적과 이번 달 기준으로 함께 보여줍니다. 큰 흐름은 여기서 확인하고, 상세 조정은 작업 화면으로 이어가면 됩니다.`;
+  settlementTotalAmount.textContent = formatMoney(summary.totalConfirmedAmount);
+  settlementMonthAmount.textContent = formatMoney(summary.confirmedAmountThisMonth);
+  settlementTotalCount.textContent = String(summary.agreementCountTotal || 0);
+  settlementMonthCount.textContent = String(summary.agreementCountThisMonth || 0);
+  settlementTotalCopy.textContent = "지금까지 OWNER 기준으로 최종 합의된 금액 합계입니다.";
+  settlementMonthCopy.textContent = "이번 달 안에 확정된 합의 금액만 따로 모아 보여줍니다.";
+  settlementTotalCountCopy.textContent = "최종 합의까지 닫힌 전체 작업 건 수입니다.";
+  settlementMonthCountCopy.textContent = "이번 달에 새로 마감된 합의 건수입니다.";
+  settlementLatestMeta.textContent = summary.latestConfirmedAt
+    ? `가장 최근 합의 · ${formatDateTime(summary.latestConfirmedAt)}`
+    : "최근 합의 시각이 아직 없습니다.";
+
+  if (!summary.recentAgreements?.length) {
+    settlementRecent.className = "home-list empty-state";
+    settlementRecent.textContent = "최근 합의 내역이 아직 없습니다.";
+    return;
+  }
+
+  settlementRecent.className = "home-list";
+  settlementRecent.innerHTML = summary.recentAgreements
+    .map((item) => `
+      <article class="home-list-item">
+        <strong>${escapeHtml(item.customerLabel || "이름 없는 작업 건")}</strong>
+        <p>${escapeHtml(item.siteLabel || "현장 정보 없음")}</p>
+        <span>${escapeHtml(`${formatMoney(item.confirmedAmount)} · ${formatDateTime(item.confirmedAt)}`)}</span>
+        <p class="helper-text">상태 · ${escapeHtml(item.status || "AGREED")}</p>
+        <div class="account-list-actions">
+          <a class="ghost-button account-inline-button" href="/app?caseId=${encodeURIComponent(item.jobCaseId)}">작업 건 보기</a>
+        </div>
+      </article>
+    `)
     .join("");
 }
 
@@ -823,6 +904,7 @@ function renderOverview() {
     ? `${company.name} 기준으로 마이페이지가 열려 있습니다. 회사 전환 시 작업 화면과 운영 콘솔도 같은 세션 기준으로 바뀝니다.`
     : "회사 연결을 마치면 작업 화면과 운영 콘솔을 같은 세션 기준으로 사용할 수 있습니다.";
 
+  renderSettlementSummary(overview.settlementSummary, company, role);
   renderMemberships(overview.memberships || []);
   renderInvitations(invitationItems, role);
   renderSessions(sessionItems);

@@ -33,7 +33,8 @@
     "revokeInvitation",
     "listMembershipsByCompany",
     "listInvitationsByCompany",
-    "listCompaniesForUser"
+    "listCompaniesForUser",
+    "getSettlementSummaryByCompany"
   ],
   auditLogRepository: ["append", "listByCompany"],
   timelineEventRepository: ["append"],

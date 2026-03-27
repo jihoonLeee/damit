@@ -351,18 +351,26 @@ async function handleApiRequest(request, response, repositories) {
 
   if (request.method === "GET" && pathname === "/api/v1/account/overview") {
     const authContext = await requireSessionContext(request, repositories);
-    const membershipItems = authContext.companyId
-      ? await repositories.authRepository.listMembershipsByCompany(authContext.companyId)
-      : [];
-    const invitationItems = authContext.companyId && authContext.role === "OWNER"
-      ? await repositories.authRepository.listInvitationsByCompany(authContext.companyId)
-      : [];
-    const sessionItems = await repositories.authRepository.listSessionsByUser(authContext.userId);
-    const recentLoginActivity = authContext.email
-      ? await repositories.authRepository.listRecentChallengesByEmail(authContext.email, 5)
-      : [];
-    const recentAccountActivity = authContext.companyId
-      ? (await repositories.auditLogRepository.listByCompany(authContext.companyId, { limit: 20 }))
+    const [membershipItems, invitationItems, sessionItems, recentLoginActivity, recentAccountActivity, settlementSummary] = await Promise.all([
+      authContext.companyId
+        ? repositories.authRepository.listMembershipsByCompany(authContext.companyId)
+        : [],
+      authContext.companyId && authContext.role === "OWNER"
+        ? repositories.authRepository.listInvitationsByCompany(authContext.companyId)
+        : [],
+      repositories.authRepository.listSessionsByUser(authContext.userId),
+      authContext.email
+        ? repositories.authRepository.listRecentChallengesByEmail(authContext.email, 5)
+        : [],
+      authContext.companyId
+        ? repositories.auditLogRepository.listByCompany(authContext.companyId, { limit: 20 })
+        : [],
+      authContext.companyId && authContext.role === "OWNER"
+        ? repositories.authRepository.getSettlementSummaryByCompany(authContext.companyId)
+        : null
+    ]);
+    const scopedAccountActivity = authContext.companyId
+      ? recentAccountActivity
         .filter((item) => item.actorUserId === authContext.userId)
         .slice(0, 5)
         .map((item) => ({
@@ -398,7 +406,8 @@ async function handleApiRequest(request, response, repositories) {
         isIdleRisk: isSessionIdleRisk(item.lastSeenAt || item.createdAt)
       })),
       recentLoginActivity,
-      recentAccountActivity,
+      recentAccountActivity: scopedAccountActivity,
+      settlementSummary,
       security: {
         trustedOriginEnforced: config.authEnforceTrustedOrigin,
         debugLinksEnabled: config.authDebugLinks,

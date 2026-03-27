@@ -92,6 +92,45 @@ function createFakePool() {
         };
       }
 
+      if (normalizedSql.includes("MAX(confirmed_at) AS latest_confirmed_at") && normalizedSql.includes("FROM agreement_records")) {
+        return {
+          rows: [
+            {
+              total_confirmed_amount: 530000,
+              agreement_count_total: 2,
+              confirmed_amount_this_month: 530000,
+              agreement_count_this_month: 2,
+              latest_confirmed_at: new Date("2026-03-12T00:40:00.000Z")
+            }
+          ]
+        };
+      }
+
+      if (normalizedSql.includes("SELECT ar.id AS agreement_id") && normalizedSql.includes("LEFT JOIN job_cases jc ON jc.id = ar.job_case_id")) {
+        return {
+          rows: [
+            {
+              agreement_id: "ar_2",
+              job_case_id: "jc_2",
+              status: "AGREED",
+              confirmed_amount: 300000,
+              confirmed_at: new Date("2026-03-12T00:40:00.000Z"),
+              customer_label: "박지현",
+              site_label: "서초 롯데캐슬"
+            },
+            {
+              agreement_id: "ar_1",
+              job_case_id: "jc_1",
+              status: "AGREED",
+              confirmed_amount: 230000,
+              confirmed_at: new Date("2026-03-10T00:40:00.000Z"),
+              customer_label: "김은정",
+              site_label: "마포 래미안"
+            }
+          ]
+        };
+      }
+
       if (normalizedSql.includes("FROM message_drafts WHERE job_case_id = $1")) {
         return {
           rows: [
@@ -303,6 +342,29 @@ test("postgres auth company list maps memberships for company context", async ()
       membershipId: "membership_2"
     }
   ]);
+
+  await bundle.close();
+});
+
+test("postgres auth repository exposes owner settlement summary", async () => {
+  const bundle = createRepositoryBundle({ engine: "POSTGRES", pool: createFakePool() });
+
+  const summary = await bundle.authRepository.getSettlementSummaryByCompany("comp_1");
+
+  assert.equal(summary.totalConfirmedAmount, 530000);
+  assert.equal(summary.confirmedAmountThisMonth, 530000);
+  assert.equal(summary.agreementCountTotal, 2);
+  assert.equal(summary.agreementCountThisMonth, 2);
+  assert.equal(summary.latestConfirmedAt, "2026-03-12T00:40:00.000Z");
+  assert.deepEqual(summary.recentAgreements[0], {
+    agreementId: "ar_2",
+    jobCaseId: "jc_2",
+    customerLabel: "박지현",
+    siteLabel: "서초 롯데캐슬",
+    confirmedAmount: 300000,
+    confirmedAt: "2026-03-12T00:40:00.000Z",
+    status: "AGREED"
+  });
 
   await bundle.close();
 });

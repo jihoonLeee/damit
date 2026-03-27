@@ -444,6 +444,74 @@ test("account overview returns company, memberships, invitations, and security s
   assert.equal(accountPayload.internalAccess.systemAdmin, false);
 });
 
+test("owner account overview returns settlement summary from agreed amounts", async () => {
+  const ownerChallenge = await issueChallenge("settlement-owner@example.com");
+  const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {
+    displayName: "정산 오너",
+    companyName: "정산 테스트 클린"
+  });
+  const ownerCookie = readCookiesFromResponse(ownerVerify.response);
+  const ownerCsrf = getCookieValue(ownerCookie, config.csrfCookieName);
+
+  const createJobCase = async (customerLabel, siteLabel, originalQuoteAmount) => {
+    const response = await fetch(`${baseUrl}/api/v1/job-cases`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      },
+      body: JSON.stringify({
+        customerLabel,
+        siteLabel,
+        originalQuoteAmount
+      })
+    });
+    assert.equal(response.status, 201);
+    return response.json();
+  };
+
+  const firstJobCase = await createJobCase("잠실 리센츠", "잠실 리센츠 1203", 250000);
+  const secondJobCase = await createJobCase("서초 롯데캐슬", "서초 롯데캐슬 804", 310000);
+
+  for (const [jobCaseId, confirmedAmount] of [
+    [firstJobCase.id, 320000],
+    [secondJobCase.id, 410000]
+  ]) {
+    const agreementResponse = await fetch(`${baseUrl}/api/v1/job-cases/${jobCaseId}/agreement-records`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      },
+      body: JSON.stringify({
+        status: "AGREED",
+        confirmationChannel: "KAKAO_OR_SMS",
+        confirmedAmount,
+        customerResponseNote: "합의 완료"
+      })
+    });
+    assert.equal(agreementResponse.status, 201);
+  }
+
+  const accountResponse = await fetch(`${baseUrl}/api/v1/account/overview`, {
+    headers: {
+      Cookie: ownerCookie
+    }
+  });
+  assert.equal(accountResponse.status, 200);
+  const accountPayload = await accountResponse.json();
+
+  assert.equal(accountPayload.settlementSummary.totalConfirmedAmount, 730000);
+  assert.equal(accountPayload.settlementSummary.confirmedAmountThisMonth, 730000);
+  assert.equal(accountPayload.settlementSummary.agreementCountTotal, 2);
+  assert.equal(accountPayload.settlementSummary.agreementCountThisMonth, 2);
+  assert.equal(accountPayload.settlementSummary.recentAgreements.length, 2);
+  assert.equal(accountPayload.settlementSummary.recentAgreements[0].status, "AGREED");
+  assert.equal(accountPayload.settlementSummary.recentAgreements[0].customerLabel, "서초 롯데캐슬");
+});
+
 test("account profile can update display name and phone number", async () => {
   const ownerChallenge = await issueChallenge("profile-owner@example.com");
   const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {

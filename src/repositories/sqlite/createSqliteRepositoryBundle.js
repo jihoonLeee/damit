@@ -125,6 +125,67 @@ function canReadFieldRecord(fieldRecord, scope) {
   return (fieldRecord.company_id || null) === scope.companyId;
 }
 
+function toTimestampMillis(value) {
+  if (!value) {
+    return 0;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getCurrentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return {
+    startMs: start.getTime(),
+    endMs: end.getTime()
+  };
+}
+
+function buildSettlementSummary(db, companyId, limit = 5) {
+  const jobCasesById = new Map((db.jobCases || []).map((item) => [item.id, item]));
+  const { startMs, endMs } = getCurrentMonthRange();
+  const agreements = (db.agreementRecords || [])
+    .filter((item) => (item.company_id || null) === companyId && item.status === "AGREED")
+    .sort((left, right) => toTimestampMillis(right.confirmed_at || right.created_at) - toTimestampMillis(left.confirmed_at || left.created_at));
+
+  const totalConfirmedAmount = agreements.reduce((sum, item) => {
+    const amount = Number(item.confirmed_amount);
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+
+  const monthlyAgreements = agreements.filter((item) => {
+    const timestamp = toTimestampMillis(item.confirmed_at || item.created_at);
+    return timestamp >= startMs && timestamp < endMs;
+  });
+
+  const confirmedAmountThisMonth = monthlyAgreements.reduce((sum, item) => {
+    const amount = Number(item.confirmed_amount);
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+
+  return {
+    totalConfirmedAmount,
+    confirmedAmountThisMonth,
+    agreementCountTotal: agreements.length,
+    agreementCountThisMonth: monthlyAgreements.length,
+    latestConfirmedAt: agreements[0]?.confirmed_at || agreements[0]?.created_at || null,
+    recentAgreements: agreements.slice(0, limit).map((item) => {
+      const jobCase = jobCasesById.get(item.job_case_id) || null;
+      return {
+        agreementId: item.id,
+        jobCaseId: item.job_case_id,
+        customerLabel: jobCase?.customer_label || "이름 없는 작업 건",
+        siteLabel: jobCase?.site_label || "",
+        confirmedAmount: Number(item.confirmed_amount) || 0,
+        confirmedAt: item.confirmed_at || item.created_at || null,
+        status: item.status
+      };
+    })
+  };
+}
+
 export function createSqliteRepositoryBundle() {
   return {
     engine: "SQLITE",
@@ -425,7 +486,8 @@ export function createSqliteRepositoryBundle() {
         revokeInvitation: async (input) => revokeInvitation(input),
         listMembershipsByCompany: async (companyId) => listMembershipsByCompany(companyId),
         listInvitationsByCompany: async (companyId) => listInvitationsByCompany(companyId),
-        listCompaniesForUser: async (userId) => listCompaniesForUser(userId)
+        listCompaniesForUser: async (userId) => listCompaniesForUser(userId),
+        getSettlementSummaryByCompany: async (companyId) => buildSettlementSummary(await readDb(), companyId)
       },
     auditLogRepository: {
       append: async (entry) => {

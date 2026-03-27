@@ -62,6 +62,45 @@
       </article>
     </section>
 
+    <section id="account-settlement-section" class="ops-layout ops-layout-wide hidden">
+      <section class="ops-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Owner Settlement</p>
+            <h2>최종 합의 금액 요약</h2>
+          </div>
+        </div>
+        <p id="account-settlement-copy" class="ops-panel-copy">이번 달과 누적 기준으로 최종 합의 금액을 요약합니다.</p>
+        <div class="account-settlement-summary">
+          <article class="account-settlement-stat">
+            <span>누적 합의 금액</span>
+            <strong id="account-settlement-total-amount">-</strong>
+            <p id="account-settlement-total-copy">지금까지 최종 합의된 금액 합계입니다.</p>
+          </article>
+          <article class="account-settlement-stat">
+            <span>이번 달 합의 금액</span>
+            <strong id="account-settlement-month-amount">-</strong>
+            <p id="account-settlement-month-copy">이번 달 안에 확정된 합의 금액입니다.</p>
+          </article>
+          <article class="account-settlement-stat">
+            <span>누적 합의 건수</span>
+            <strong id="account-settlement-total-count">0</strong>
+            <p id="account-settlement-total-count-copy">지금까지 최종 합의로 끝난 작업 건 수입니다.</p>
+          </article>
+          <article class="account-settlement-stat">
+            <span>이번 달 합의 건수</span>
+            <strong id="account-settlement-month-count">0</strong>
+            <p id="account-settlement-month-count-copy">이번 달에 마감된 합의 건수입니다.</p>
+          </article>
+        </div>
+        <div class="account-subsection-header">
+          <strong>최근 합의 내역</strong>
+          <span id="account-settlement-latest-meta" class="helper-text">최근 확정 내역을 불러오는 중입니다.</span>
+        </div>
+        <div id="account-settlement-recent" class="home-list empty-state">최근 합의 내역을 불러오는 중입니다.</div>
+      </section>
+    </section>
+
     <section class="ops-layout ops-layout-wide">
       <section class="ops-panel">
         <div class="panel-header">

@@ -722,7 +722,23 @@ body.review-detail .card {
   margin-bottom: 16px;
 }
 
+.account-settlement-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .account-session-stat {
+  border-radius: 18px;
+  border: 1px solid rgba(180, 155, 119, 0.34);
+  background: linear-gradient(180deg, rgba(248, 242, 233, 0.92) 0%, rgba(255, 251, 245, 0.98) 100%);
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.account-settlement-stat {
   border-radius: 18px;
   border: 1px solid rgba(180, 155, 119, 0.34);
   background: linear-gradient(180deg, rgba(248, 242, 233, 0.92) 0%, rgba(255, 251, 245, 0.98) 100%);
@@ -739,12 +755,30 @@ body.review-detail .card {
   letter-spacing: 0.04em;
 }
 
+.account-settlement-stat span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .account-session-stat strong {
   font-size: 28px;
   line-height: 1;
 }
 
+.account-settlement-stat strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
 .account-session-stat p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.account-settlement-stat p {
   color: var(--muted);
   line-height: 1.55;
 }
@@ -1967,6 +2001,7 @@ body.review-detail .card {
     flex-direction: column;
   }
   .account-session-summary,
+  .account-settlement-summary,
   .account-session-layout {
     grid-template-columns: 1fr;
   }
@@ -2005,7 +2040,14 @@ body.review-detail .card {
     border-radius: 16px;
     padding: 12px;
   }
+  .account-settlement-stat {
+    border-radius: 16px;
+    padding: 12px;
+  }
   .account-session-stat strong {
+    font-size: 24px;
+  }
+  .account-settlement-stat strong {
     font-size: 24px;
   }
   .account-subsection-header {

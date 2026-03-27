@@ -70,6 +70,16 @@ function mapInvitationRow(item) {
   };
 }
 
+function getCurrentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString()
+  };
+}
+
 function pickOpsValue(item, keys) {
   for (const key of keys) {
     if (item && item[key] != null) {
@@ -2549,6 +2559,62 @@ export function createPostgresRepositoryBundle({
             lastSentAt: item.last_sent_at,
             createdAt: item.created_at
           }));
+        },
+        getSettlementSummaryByCompany: async (companyId) => {
+          const { startIso, endIso } = getCurrentMonthRange();
+          const [summaryResult, recentResult] = await Promise.all([
+            pool.query(
+              `
+                SELECT
+                  COALESCE(SUM(COALESCE(confirmed_amount, 0)), 0)::bigint AS total_confirmed_amount,
+                  COUNT(*)::int AS agreement_count_total,
+                  COALESCE(SUM(CASE WHEN confirmed_at >= $2 AND confirmed_at < $3 THEN COALESCE(confirmed_amount, 0) ELSE 0 END), 0)::bigint AS confirmed_amount_this_month,
+                  COUNT(*) FILTER (WHERE confirmed_at >= $2 AND confirmed_at < $3)::int AS agreement_count_this_month,
+                  MAX(confirmed_at) AS latest_confirmed_at
+                FROM agreement_records
+                WHERE company_id = $1
+                  AND status = 'AGREED'
+              `,
+              [companyId, startIso, endIso]
+            ),
+            pool.query(
+              `
+                SELECT
+                  ar.id AS agreement_id,
+                  ar.job_case_id,
+                  ar.status,
+                  ar.confirmed_amount,
+                  ar.confirmed_at,
+                  jc.customer_label,
+                  jc.site_label
+                FROM agreement_records ar
+                LEFT JOIN job_cases jc ON jc.id = ar.job_case_id
+                WHERE ar.company_id = $1
+                  AND ar.status = 'AGREED'
+                ORDER BY COALESCE(ar.confirmed_at, ar.created_at) DESC
+                LIMIT 5
+              `,
+              [companyId]
+            )
+          ]);
+
+          const summary = normalizeRow(summaryResult.rows[0] || {});
+          return {
+            totalConfirmedAmount: Number(summary.total_confirmed_amount || 0),
+            confirmedAmountThisMonth: Number(summary.confirmed_amount_this_month || 0),
+            agreementCountTotal: Number(summary.agreement_count_total || 0),
+            agreementCountThisMonth: Number(summary.agreement_count_this_month || 0),
+            latestConfirmedAt: summary.latest_confirmed_at || null,
+            recentAgreements: normalizeRows(recentResult.rows).map((item) => ({
+              agreementId: item.agreement_id,
+              jobCaseId: item.job_case_id,
+              customerLabel: item.customer_label || "이름 없는 작업 건",
+              siteLabel: item.site_label || "",
+              confirmedAmount: Number(item.confirmed_amount || 0),
+              confirmedAt: item.confirmed_at || null,
+              status: item.status
+            }))
+          };
         },
         listCompaniesForUser: async (userId) => {
           return (await listActiveMembershipRows(pool, userId)).map((row) => toCompanySummary(row));
