@@ -284,6 +284,23 @@ Keep append-only traces for:
 - Cloudflare Tunnel hostnames should be created in the Cloudflare dashboard, while the Ubuntu server now has helper scripts for origin switching and public-host smoke checks
 - SSH and maintenance stay on Tailscale even after the public hostname is introduced
 
+## Latest PM real-mail branding note
+
+- live login mail delivery is now proven
+- the next mail-quality bar is no longer functional delivery alone, but customer-facing brand polish
+- login and invitation emails should read like a real operator workflow with clearer subjects, CTA structure, and security guidance
+- this batch is `GO`
+
+## Latest PM Postgres next-step note
+
+- the next infrastructure phase remains `Postgres readiness`, not immediate runtime cutover
+- recommended sequence:
+  - prepare Supabase credentials
+  - run Postgres preflight
+  - confirm restore and migration path
+  - only then evaluate runtime cutover
+- PM judgment remains `cutover HOLD`, `readiness GO`
+
 ## Latest PM ops/app warning-copy note
 
 - warning cards on `/ops` and `/app` now use shorter decision-first wording
