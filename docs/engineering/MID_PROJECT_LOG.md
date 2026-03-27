@@ -390,3 +390,8 @@ ode scripts/visual-review.mjs successfully and regenerated authenticated screens
 
 - 2026-03-23: `/app` 모바일 review 프레이밍을 정리했다. `detail/agreement/copy` review 모드에서 상단 운영 요약을 숨기고 핵심 카드만 남기도록 바꿨고, 상세 로딩 후 workflow 요약이 다시 렌더링되도록 복구했다. 최신 증거는 `output/visual-review/mobile-detail-top.png`, `output/visual-review/mobile-agreement.png`에 반영됨.
 - 2026-03-23: PM 기준으로 계정 표면을 다시 정리했다. `로그인/가입/사장님 마이페이지`는 제품 표면, `시스템 관리자`는 내부 표면으로 분리하고, 다음 제품 성숙도 배치를 `시작하기 진입면 + 사장님 마이페이지 + home 역할 정리`로 잠갔다.
+## 2026-03-28 - Home/App role parity + preview refresh
+
+- added `refresh-preview-postgres-stack.sh` so self-host deploy can refresh the preview Postgres stack from latest synced code
+- repositioned `/home` as the operational starting point and `/app` as the selected-job execution hub
+- added mobile visual-review capture for authenticated `/home`

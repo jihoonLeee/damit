@@ -21,6 +21,7 @@
 - real mail smoke: `npm run smoke:mail:production-local`
 - preview Postgres rehearsal: `bash deploy/homelab/rehearse-postgres-cutover.sh`
 - preview Postgres smoke: `bash deploy/homelab/smoke-postgres-runtime.sh`
+- preview Postgres refresh after normal deploy: `bash deploy/homelab/refresh-preview-postgres-stack.sh`
 - preview Postgres checksum repair: `node scripts/repair-postgres-migration-checksums.mjs --env-file=deploy/homelab/.env.preview-postgres`
 - preview Postgres rollback: `bash deploy/homelab/rollback-to-sqlite.sh`
 - preview QA bootstrap: `npm run qa:preview:bootstrap:production-local`
@@ -95,6 +96,22 @@ Expected current result:
 - preview app is reachable
 - preview health reports `storageEngine=POSTGRES`
 - root health reports `storageEngine=SQLITE`
+
+## Home/App surface rule
+
+- `/home` is the operational starting point
+- `/app` is the selected-job execution hub
+- use `/home` for:
+  - company context
+  - session state
+  - memberships
+  - invitations
+  - deciding where to go next
+- use `/app` for:
+  - capture
+  - quote
+  - draft
+  - confirm
 
 ## Supabase attach checklist
 

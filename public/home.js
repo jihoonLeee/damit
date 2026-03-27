@@ -67,7 +67,7 @@ function createActionItems(company, role) {
       {
         tone: "is-warning",
         title: "회사 컨텍스트가 아직 없습니다",
-        body: "초대 링크를 다시 확인하거나 첫 로그인 설정을 완료한 뒤 운영 홈을 새로고침해 주세요."
+        body: "초대 링크를 다시 확인하거나 첫 로그인 설정을 완료한 뒤 운영 홈을 새로고침해 주세요. 연결이 끝나야 작업 허브로 들어갈 수 있습니다."
       }
     ];
   }
@@ -76,13 +76,13 @@ function createActionItems(company, role) {
     return [
       {
         tone: "is-active",
-        title: "작업 워크스페이스로 들어가 현재 작업 건을 이어서 처리하세요",
-        body: "현장 기록 연결은 /app/capture, 견적은 /app/quote, 최종 확인은 /app/confirm에서 단계별로 이어서 처리합니다."
+        title: "작업 허브로 들어가 현재 작업 건을 이어서 처리하세요",
+        body: "현장 기록 연결은 /app/capture, 견적은 /app/quote, 최종 확인은 /app/confirm에서 단계별로 이어서 처리합니다. 운영 홈은 출발점이고 실제 건별 편집은 /app입니다."
       },
       {
         tone: "is-good",
-        title: "운영 콘솔에서 로그인 준비도와 백업 상태를 함께 확인하세요",
-        body: "운영 모드 점검, 백업, 로그인 전달 상태는 `/ops`에서 확인합니다."
+        title: "운영 콘솔에서는 점검만 하고, 실제 실행은 다시 작업 허브로 돌아오세요",
+        body: "운영 모드 점검, 백업, 로그인 전달 상태는 `/ops`에서 확인합니다. 실제 견적, 초안, 합의 수정은 다시 `/app`에서 처리합니다."
       },
       {
         tone: "is-warning",
@@ -96,12 +96,12 @@ function createActionItems(company, role) {
     return [
       {
         tone: "is-active",
-        title: "작업 워크스페이스에서 견적과 합의 흐름을 이어서 처리하세요",
-        body: "MANAGER 권한에서는 변경 견적, 설명 초안, 합의 기록까지 계속 진행할 수 있습니다."
+        title: "작업 허브에서 견적과 합의 흐름을 이어서 처리하세요",
+        body: "MANAGER 권한에서는 변경 견적, 설명 초안, 합의 기록까지 계속 진행할 수 있습니다. 운영 홈은 상태 판단과 이동에 집중합니다."
       },
       {
         tone: "is-good",
-        title: "현재 회사 멤버 구성을 먼저 확인하세요",
+        title: "멤버 구성을 먼저 확인하고, 이후 실제 업무는 작업 허브로 이동하세요",
         body: "누가 OWNER, MANAGER, STAFF인지 먼저 확인해 두면 작업 분담이 훨씬 명확해집니다."
       }
     ];
@@ -110,8 +110,8 @@ function createActionItems(company, role) {
   return [
     {
       tone: "is-active",
-      title: "작업 워크스페이스에서 배정된 현장 건과 현장 기록을 처리하세요",
-      body: "STAFF 권한에서는 주로 현장 기록 작성과 연결된 작업 건 확인에 집중하면 됩니다."
+      title: "작업 허브에서 배정된 현장 건과 현장 기록을 처리하세요",
+      body: "STAFF 권한에서는 주로 현장 기록 작성과 연결된 작업 건 확인에 집중하면 됩니다. 운영 홈은 오늘 어떤 회사 기준으로 움직일지 정하는 출발점입니다."
     },
     {
       tone: "is-good",
@@ -128,7 +128,7 @@ function getRecommendedRoute(company, role) {
       primaryLabel: "회사 연결 상태 확인",
       primaryButtonLabel: "현재 상태 다시 확인",
       title: "회사 연결을 먼저 마무리해 주세요",
-      copy: "초대 링크 수락이나 첫 로그인 설정이 끝나야 작업 워크스페이스와 운영 콘솔을 제대로 쓸 수 있습니다.",
+      copy: "초대 링크 수락이나 첫 로그인 설정이 끝나야 작업 허브와 운영 콘솔을 제대로 쓸 수 있습니다.",
       routeSummary: "현재 회사 컨텍스트가 없어서 아직 이동보다 연결 상태 확인이 우선입니다.",
       switchNote: "회사 연결이 끝나면 현재 브라우저 세션 기준으로 작업 화면과 운영 화면을 이어서 사용할 수 있습니다."
     };
@@ -137,13 +137,13 @@ function getRecommendedRoute(company, role) {
   if (role === "OWNER") {
     return {
       primaryPath: "/app/capture",
-      primaryLabel: "작업 워크스페이스",
-      primaryButtonLabel: "작업 워크스페이스 열기",
+      primaryLabel: "작업 허브",
+      primaryButtonLabel: "작업 허브 열기",
       secondaryPath: "/ops",
       secondaryLabel: "운영 콘솔 보기",
-      title: "먼저 작업 워크스페이스로 이동해 현재 작업 건을 확인하세요",
-      copy: "실제 업무는 /app/capture부터 시작하고, 이후 견적·초안·합의 단계로 나눠 보는 편이 가장 직관적입니다. 운영 점검과 백업 확인은 /ops에서 따로 봅니다.",
-      routeSummary: `${company.name}에서는 /app/capture를 먼저 열고, 단계별 작업을 이어간 뒤 운영 점검이 필요할 때 /ops로 넘어가면 됩니다.`,
+      title: "먼저 작업 허브로 이동해 현재 작업 건을 확인하세요",
+      copy: "운영 홈은 출발점이고, 실제 업무는 /app/capture부터 시작하는 단계형 작업 허브에서 진행합니다. 운영 점검과 백업 확인은 /ops에서 따로 봅니다.",
+      routeSummary: `${company.name}에서는 운영 홈에서 회사와 세션 상태를 확인한 뒤 /app/capture로 넘어가 단계별 작업을 이어가면 됩니다. 운영 점검이 필요할 때만 /ops로 갑니다.`,
       switchNote: "회사 전환 후 이미 열려 있던 /app 또는 /ops 탭이 있다면 한 번 새로고침하면 새 컨텍스트로 이어집니다."
     };
   }
@@ -151,22 +151,22 @@ function getRecommendedRoute(company, role) {
   if (role === "MANAGER") {
     return {
       primaryPath: "/app/capture",
-      primaryLabel: "작업 워크스페이스",
-      primaryButtonLabel: "작업 워크스페이스 열기",
+      primaryLabel: "작업 허브",
+      primaryButtonLabel: "작업 허브 열기",
       title: "견적과 합의가 필요한 작업 건부터 이어서 처리하세요",
-      copy: "현재 권한에서는 /app/capture부터 시작하는 단계형 작업 화면이 주 동선입니다. 운영 콘솔은 OWNER 중심 점검 화면으로 보면 됩니다.",
-      routeSummary: `${company.name}에서는 /app/capture부터 시작하는 작업 화면이 주 경로입니다. 운영 점검은 OWNER와 함께 확인하는 편이 좋습니다.`,
+      copy: "현재 권한에서는 /app/capture부터 시작하는 단계형 작업 허브가 주 동선입니다. 운영 콘솔은 OWNER 중심 점검 화면으로 보면 됩니다.",
+      routeSummary: `${company.name}에서는 운영 홈에서 현재 회사와 역할을 확인한 뒤 /app/capture부터 시작하는 작업 허브로 이동하면 됩니다.`,
       switchNote: "회사 전환 후에는 현장 기록, 견적, 합의 흐름이 새 회사 기준으로 보이므로 기존 탭을 새로고침해 주세요."
     };
   }
 
   return {
-      primaryPath: "/app/capture",
-    primaryLabel: "작업 워크스페이스",
-    primaryButtonLabel: "작업 워크스페이스 열기",
+    primaryPath: "/app/capture",
+    primaryLabel: "작업 허브",
+    primaryButtonLabel: "작업 허브 열기",
     title: "배정된 현장 작업과 기록 상태를 먼저 확인하세요",
-    copy: "현재 권한에서는 /app/capture부터 시작하는 작업 화면이 주 동선입니다. 현장 기록과 연결된 작업 건을 먼저 확인하면 됩니다.",
-    routeSummary: `${company.name}에서는 /app/capture에서 현장 기록과 작업 건을 먼저 확인하는 흐름이 우선입니다.`,
+    copy: "현재 권한에서는 /app/capture부터 시작하는 작업 허브가 주 동선입니다. 현장 기록과 연결된 작업 건을 먼저 확인하면 됩니다.",
+    routeSummary: `${company.name}에서는 운영 홈에서 회사 컨텍스트를 확인한 뒤 /app/capture에서 현장 기록과 작업 건을 먼저 확인하는 흐름이 우선입니다.`,
     switchNote: "회사 전환 후에는 내가 볼 수 있는 작업 건과 현장 기록 범위가 달라질 수 있으니 새로고침을 권장합니다."
   };
 }
@@ -199,7 +199,7 @@ function renderSummaryCard() {
 
   setCard(
     `${company.name} · ${roleLabel(role)} 세션`,
-    `${route.primaryLabel}에서 현재 업무를 이어가면 됩니다. ${role === "OWNER" ? "운영 점검이 필요할 때만 /ops를 추가로 보면 됩니다." : "운영 콘솔은 OWNER 중심 화면이므로 현재 역할에서는 /app이 더 중요합니다."}`
+    `운영 홈에서는 상태를 판단하고, 실제 업무는 ${route.primaryLabel}에서 이어가면 됩니다. ${role === "OWNER" ? "운영 점검이 필요할 때만 /ops를 추가로 보면 됩니다." : "운영 콘솔은 OWNER 중심 화면이므로 현재 역할에서는 /app이 더 중요합니다."}`
   );
 }
 
@@ -246,7 +246,7 @@ function renderWorkflowGuidance() {
 
   if (homeSessionCopy) {
     homeSessionCopy.textContent = company
-      ? "이 브라우저 세션은 현재 회사 컨텍스트를 유지합니다. 다른 회사로 옮기고 싶을 때만 아래 전환 기능을 사용하면 됩니다."
+      ? "이 브라우저 세션은 현재 회사 컨텍스트를 유지합니다. 다른 회사로 옮기고 싶을 때만 아래 전환 기능을 사용하면 됩니다. 실제 작업 편집은 `/app`에서 진행합니다."
       : "초대 링크 또는 첫 로그인 설정이 완전히 끝나지 않았을 수 있습니다. 현재 회사 연결 상태를 먼저 확인해 주세요.";
   }
 
@@ -285,7 +285,7 @@ function renderWorkflowGuidance() {
     accountRouteCard.classList.add("is-secondary-route");
   }
   if (accountRouteBadge) {
-    accountRouteBadge.textContent = "내 정보";
+    accountRouteBadge.textContent = "계정/세션";
     accountRouteBadge.className = "status-badge neutral";
   }
   if (homeOpsCard) {
@@ -293,8 +293,8 @@ function renderWorkflowGuidance() {
   }
   if (homeOpsCopy) {
     homeOpsCopy.textContent = isOwner
-      ? "운영 상태, 백업, 로그인 전달 준비도, 최근 활동을 확인하는 화면입니다. OWNER 권한에서는 여기서 직접 점검할 수 있습니다."
-      : "운영 콘솔은 OWNER 권한에서 주로 확인합니다. 현재 역할에서는 작업 워크스페이스 중심으로 업무를 이어가면 됩니다.";
+      ? "운영 상태, 백업, 로그인 전달 준비도, 최근 활동을 확인하는 점검 화면입니다. 실제 건별 편집은 다시 `/app`으로 돌아가서 처리합니다."
+      : "운영 콘솔은 OWNER 권한에서 주로 확인합니다. 현재 역할에서는 작업 허브 중심으로 업무를 이어가면 됩니다.";
   }
 
   if (homeCompanyNote) {
@@ -321,13 +321,13 @@ function renderWorkflowGuidance() {
   if (workspaceRouteBadge) {
     workspaceRouteBadge.textContent = company
       ? role === "OWNER"
-        ? "먼저 여기"
-        : "주 작업 화면"
+        ? "실행 시작"
+        : "주 실행 화면"
       : "연결 우선";
     workspaceRouteBadge.className = `status-badge ${company ? "EXPLAINED" : "neutral"}`;
   }
   if (opsRouteBadge) {
-    opsRouteBadge.textContent = isOwner ? "운영 점검" : company ? "OWNER 전용" : "대기";
+    opsRouteBadge.textContent = isOwner ? "운영 점검" : company ? "OWNER 점검" : "대기";
     opsRouteBadge.className = `status-badge ${isOwner ? "AGREED" : "neutral"}`;
   }
   if (homeOpsCard) {

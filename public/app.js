@@ -41,11 +41,11 @@ const workflowScreenConfig = {
   overview: {
     label: "전체 보기",
     path: "/app",
-    heroEyebrow: "DAMIT WORKSPACE",
-    heroTitle: "다밋 운영 워크스페이스",
-    heroCopy: "현장 기록, 작업 건 연결, 변경 견적, 설명 초안, 고객 확인, 합의 기록을 한 화면에서 이어서 관리합니다. 기록이 먼저 남고 설명이 따라오도록 구성해, 현장 이후 후속 커뮤니케이션을 빠르게 마무리할 수 있습니다.",
-    noteTitle: "전체 작업 화면",
-    noteCopy: "기존 전체 워크스페이스입니다. 단계별 화면이 필요하면 위 경로에서 각 단계를 따로 열 수 있습니다."
+    heroEyebrow: "DAMIT WORK HUB",
+    heroTitle: "다밋 작업 허브",
+    heroCopy: "선택된 작업 건 기준으로 현장 기록, 변경 견적, 설명 초안, 고객 확인, 합의 기록을 단계별로 실행하는 허브 화면입니다. 회사 전환, 세션, 초대, 운영 점검은 홈이나 ops에서 처리합니다.",
+    noteTitle: "작업 허브 화면",
+    noteCopy: "이 화면에서는 건별 작업 단계만 고릅니다. 회사/세션/초대/운영 판단으로 돌아가야 하면 /home 또는 /ops를 사용합니다."
   },
   capture: {
     label: "현장 기록",
@@ -1415,12 +1415,14 @@ function renderOverviewHub(snapshot) {
     elements.overviewHubBadge.textContent = "시작점";
     elements.overviewHubBadge.className = "ops-badge tone-neutral";
     elements.overviewHubTitle.textContent = "먼저 현장 기록 단계에서 흐름을 시작해 주세요.";
-    elements.overviewHubCopy.textContent = "작업 건이 아직 선택되지 않았습니다. 현장 기록을 남기거나 목록에서 기존 작업 건을 고르면 각 단계 화면으로 더 정확하게 들어갈 수 있습니다.";
+    elements.overviewHubCopy.textContent = "이 화면은 선택된 작업 건이 생긴 뒤에 가장 유용합니다. 회사 전환이나 세션 판단은 운영 홈에서, 실제 첫 기록은 현장 기록 단계에서 시작하세요.";
   } else {
     elements.overviewHubBadge.textContent = snapshot.focusBadge;
     elements.overviewHubBadge.className = `ops-badge ${snapshot.focusTone}`;
     elements.overviewHubTitle.textContent = `${detail.customerLabel} 기준으로 다음 단계를 고르세요.`;
-    elements.overviewHubCopy.textContent = `${detail.siteLabel || "현장 정보"} · ${getListActionLabel(detail)}`;
+    elements.overviewHubCopy.textContent = isTerminalStatus(detail.currentStatus)
+      ? "이 작업 건은 종료 상태입니다. 건별 기록을 다시 보는 용도로 쓰고, 회사/세션/운영 판단은 운영 홈이나 운영 콘솔로 돌아가면 됩니다."
+      : `${detail.siteLabel || "현장 정보"} · ${getListActionLabel(detail)} · 회사 전환, 세션, 초대, 운영 점검이 필요하면 운영 홈이나 운영 콘솔로 돌아가세요.`;
   }
 
   setOverviewRouteCard(elements.overviewRouteCaptureBadge, elements.overviewRouteCaptureCopy, elements.overviewRouteCaptureLink, {

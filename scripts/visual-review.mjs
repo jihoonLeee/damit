@@ -156,6 +156,16 @@ async function main() {
     });
 
     await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/home"),
+      width: 390,
+      height: 1280,
+      outputPath: path.join(outputDir, "mobile-home-authenticated.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
       url: buildAuthenticatedReviewUrl(baseUrl, "/app"),
       width: 1440,
       height: 1600,

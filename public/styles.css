@@ -156,6 +156,11 @@ h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.02; letter-spacing: -0.03
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.overview-hub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .overview-route-card {
   min-height: 100%;
 }
@@ -433,6 +438,10 @@ body.workflow-screen-confirm #timeline-card {
   .hero-card { width: 100%; max-width: none; min-width: 0; }
   .card-grid, .scope-grid, .two-column, .inline-form { grid-template-columns: 1fr; display: grid; }
   .overview-route-grid {
+    grid-template-columns: 1fr;
+  }
+  .overview-hub-actions {
+    display: grid;
     grid-template-columns: 1fr;
   }
   .panel-detail { scroll-margin-top: 12px; padding-bottom: 40px; }
@@ -838,13 +847,15 @@ body.review-detail .card {
   gap: 18px;
 }
 .home-overview-grid,
-.home-route-grid {
+.home-route-grid,
+.home-role-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 .home-overview-card,
-.home-route-card {
+.home-route-card,
+.home-role-card {
   display: grid;
   gap: 10px;
   padding: 18px;
@@ -859,13 +870,19 @@ body.review-detail .card {
     linear-gradient(90deg, rgba(201, 132, 43, 0.1) 0%, transparent 28%);
   border-color: rgba(27, 79, 209, 0.18);
 }
+.home-role-card-strong {
+  background: var(--primary);
+  border-color: var(--primary);
+}
 .home-overview-card strong,
-.home-route-card strong {
+.home-route-card strong,
+.home-role-card strong {
   font-size: 20px;
   line-height: 1.4;
 }
 .home-overview-card p,
-.home-route-card p {
+.home-route-card p,
+.home-role-card p {
   color: var(--muted);
   line-height: 1.6;
 }
@@ -1215,6 +1232,9 @@ body.review-detail .card {
   }
   .home-overview-grid,
   .home-route-grid {
+    grid-template-columns: 1fr;
+  }
+  .home-role-grid {
     grid-template-columns: 1fr;
   }
   .account-route-grid {
@@ -2708,7 +2728,10 @@ body.review-detail .card {
 .workspace-signal-card-strong .workspace-signal-label,
 .home-overview-card-strong strong,
 .home-overview-card-strong p,
-.home-overview-card-strong .workspace-priority-kicker {
+.home-overview-card-strong .workspace-priority-kicker,
+.home-role-card-strong strong,
+.home-role-card-strong p,
+.home-role-card-strong .workspace-priority-kicker {
   color: #ffffff;
 }
 

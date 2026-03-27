@@ -235,8 +235,19 @@ Keep append-only traces for:
 - one UX-quality issue was also surfaced during browser review:
   - external Google Fonts are blocked by current CSP, so live typography is falling back more than intended
 - PM judgment remains:
-  - `preview Postgres acceptance tooling GO`
-  - `root cutover HOLD`
+- `preview Postgres acceptance tooling GO`
+- `root cutover HOLD`
+
+## Latest PM home/app role parity note
+
+- `/home` and `/app` now have clearer surface roles
+- `/home` is positioned as the operational starting point
+- `/app` overview is positioned as the selected-job execution hub
+- self-host deploy now has a preview Postgres refresh path when `.env.preview-postgres` exists
+- this does not change the root cutover judgment:
+  - `production root SQLITE GO`
+  - `preview POSTGRES rehearsal GO`
+  - `root Postgres cutover HOLD`
 
 ## Latest PM account surfaces note
 
