@@ -28,13 +28,15 @@
   - `postgres-preflight` is green on the server
   - `migration-status` is green on the server after checksum repair
   - the preview Postgres container reaches healthy state
-- the only remaining manual step is public preview repoint via `/etc/cloudflared/config.yml`
+- public preview cutover now proves:
+  - `https://preview.damit.kr/api/v1/health` returns `storageEngine=POSTGRES`
+  - `https://damit.kr/api/v1/health` remains on `storageEngine=SQLITE`
+  - root traffic stayed on SQLite while preview was switched
+- an operational issue was discovered during the cutover:
+  - a second user-run `cloudflared` process was still attached to the same tunnel
+  - preview traffic kept landing on the stale connector until that extra process was stopped
 
 ## Remaining gap
 
-- this batch still does not prove the public preview switch or rollback under Cloudflare
-- the next step is to:
-  - point `preview.damit.kr` to `127.0.0.1:3211`
-  - smoke `https://preview.damit.kr`
-  - then point preview back to `127.0.0.1:3210`
-  - confirm rollback back to SQLite
+- this batch now proves the public preview switch under Cloudflare
+- the only remaining optional proof is rollback back to SQLite after preview testing is complete

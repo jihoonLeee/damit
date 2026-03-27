@@ -127,6 +127,11 @@ Expected current result:
 - when updating homelab env files, prefer helper scripts that replace an existing key instead of appending another line
 - duplicated keys can leave the live runtime with the last unexpected value even when an earlier line looks correct
 
+### Tunnel hygiene note
+
+- before switching preview between `3210` and `3211`, confirm there is only one active `cloudflared` process for the tunnel
+- a stale user-run `cloudflared` process can keep serving an old ingress mapping even after the systemd service is restarted
+
 ## Incident priorities
 
 ### P0

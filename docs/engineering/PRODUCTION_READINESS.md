@@ -216,7 +216,11 @@ Keep append-only traces for:
 
 - the server-side preview rehearsal now proves local runtime health on `3211` with `storageEngine=POSTGRES`
 - the previously blocking checksum mismatch on `0001_production_core` is now repaired and normalized
-- the only remaining gap for this batch is the manual Cloudflare preview switch and rollback proof
+- the public preview switch is now proven as well:
+  - `preview.damit.kr` can run on Postgres
+  - `damit.kr` remains on SQLite during the switch
+- an extra stale `cloudflared` user process caused mixed routing until it was stopped
+- the remaining optional proof for this batch is rollback back to SQLite after preview testing
 
 ## Latest PM account surfaces note
 
