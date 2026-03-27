@@ -69,6 +69,7 @@ jobs:
             --exclude '.git/' \
             --exclude 'node_modules/' \
             --exclude 'data/' \
+            --exclude 'data-preview-postgres/' \
             --exclude 'output/' \
             --exclude '.fly-config/' \
             ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
