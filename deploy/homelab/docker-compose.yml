@@ -3,10 +3,10 @@
     build:
       context: ../..
       dockerfile: Dockerfile
-    container_name: damit-homelab-app
+    container_name: ${APP_CONTAINER_NAME:-damit-homelab-app}
     restart: unless-stopped
     env_file:
-      - .env
+      - ${APP_ENV_FILE:-.env}
     environment:
       PORT: 3000
       NODE_ENV: production

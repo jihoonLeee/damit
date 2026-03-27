@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_ROOT="${APP_ROOT:-/srv/damit/app}"
-DATA_ROOT="${DATA_ROOT:-/srv/damit/data}"
-BACKUP_ROOT="${BACKUP_ROOT:-/srv/damit/backups}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_APP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+APP_ROOT="${APP_ROOT:-$DEFAULT_APP_ROOT}"
+DATA_ROOT="${DATA_ROOT:-$APP_ROOT/data}"
+BACKUP_ROOT="${BACKUP_ROOT:-$APP_ROOT/backups}"
 
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl gnupg ufw fail2ban git
@@ -21,7 +23,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 sudo mkdir -p "$APP_ROOT" "$DATA_ROOT" "$BACKUP_ROOT"
-sudo chown -R "$USER":"$USER" /srv/damit
+sudo chown -R "$USER":"$USER" "$APP_ROOT" "$DATA_ROOT" "$BACKUP_ROOT"
 
 sudo systemctl enable docker
 sudo systemctl start docker

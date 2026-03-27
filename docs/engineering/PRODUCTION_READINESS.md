@@ -205,6 +205,13 @@ Keep append-only traces for:
 - proxy-derived client IPs are no longer trusted unconditionally
 - broader public production still remains `HOLD` until durable throttling and server-side Postgres rehearsal are also proven
 
+## Latest PM Postgres rehearsal note
+
+- the next approved infra batch is `preview-only server-side Postgres cutover rehearsal`
+- root traffic must remain on SQLite during the rehearsal
+- preview rehearsal should run as a separate stack on port `3211`
+- rollback must be able to return preview to SQLite without affecting `damit.kr`
+
 ## Latest PM account surfaces note
 
 - the next product-facing maturity step is not more infrastructure, but clearer account surfaces

@@ -19,6 +19,9 @@
 - staging env check: `npm run env:check:staging`
 - production env check: `npm run env:check:production`
 - real mail smoke: `npm run smoke:mail:production-local`
+- preview Postgres rehearsal: `bash deploy/homelab/rehearse-postgres-cutover.sh`
+- preview Postgres smoke: `bash deploy/homelab/smoke-postgres-runtime.sh`
+- preview Postgres rollback: `bash deploy/homelab/rollback-to-sqlite.sh`
 
 ## Current environment model
 
@@ -101,6 +104,22 @@ Expected current result:
 7. run `npm run pg:preflight`
 8. run `npm run migrate:status`
 9. only after readiness and preflight are green, proceed with migration and runtime cutover discussion
+
+## Preview Postgres rehearsal
+
+1. keep root runtime on `3210`
+2. prepare a separate preview env and stack on `3211`
+3. run:
+   - `bash deploy/homelab/rehearse-postgres-cutover.sh`
+4. confirm local health reports `storageEngine=POSTGRES`
+5. temporarily point `preview.damit.kr` to `127.0.0.1:3211` in `/etc/cloudflared/config.yml`
+6. restart `cloudflared`
+7. confirm:
+   - `curl https://preview.damit.kr/api/v1/health`
+8. when the rehearsal is complete or fails:
+   - `bash deploy/homelab/rollback-to-sqlite.sh`
+9. point `preview.damit.kr` back to `127.0.0.1:3210`
+10. confirm preview is back on SQLite
 
 ## Incident priorities
 

@@ -39,10 +39,10 @@ fi
 
 case "$MODE" in
   preview)
-    AUTH_DEBUG_LINKS_VALUE="true"
+    AUTH_DEBUG_LINKS_VALUE="false"
     ;;
   root)
-    AUTH_DEBUG_LINKS_VALUE="true"
+    AUTH_DEBUG_LINKS_VALUE="false"
     ;;
   *)
     echo "Invalid --mode. Use preview or root."
