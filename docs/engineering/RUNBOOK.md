@@ -21,6 +21,7 @@
 - real mail smoke: `npm run smoke:mail:production-local`
 - preview Postgres rehearsal: `bash deploy/homelab/rehearse-postgres-cutover.sh`
 - preview Postgres smoke: `bash deploy/homelab/smoke-postgres-runtime.sh`
+- preview Postgres checksum repair: `node scripts/repair-postgres-migration-checksums.mjs --env-file=deploy/homelab/.env.preview-postgres`
 - preview Postgres rollback: `bash deploy/homelab/rollback-to-sqlite.sh`
 
 ## Current environment model
@@ -120,6 +121,11 @@ Expected current result:
    - `bash deploy/homelab/rollback-to-sqlite.sh`
 9. point `preview.damit.kr` back to `127.0.0.1:3210`
 10. confirm preview is back on SQLite
+
+### Env hygiene note
+
+- when updating homelab env files, prefer helper scripts that replace an existing key instead of appending another line
+- duplicated keys can leave the live runtime with the last unexpected value even when an earlier line looks correct
 
 ## Incident priorities
 

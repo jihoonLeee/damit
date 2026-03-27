@@ -16,6 +16,7 @@
 - current root and preview both point to the same homelab app stack on port `3210`
 - a safe rehearsal must not replace the root SQLite runtime
 - Cloudflare tunnel config still lives outside this repository
+- server env files may already contain drift or duplicated keys from earlier manual edits, so rehearsal tooling should normalize overridden keys instead of appending duplicate entries
 
 ## Approach
 

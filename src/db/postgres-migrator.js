@@ -8,8 +8,62 @@ import { buildPostgresConnectionOptions } from "./postgres-connection.js";
 
 const { Client } = pg;
 
+const LEGACY_MIGRATION_CHECKSUMS = new Map([
+  ["0001_production_core", {
+    canonicalChecksum: "2aa6bdae0ae8fd1715db933cafb4331cd41c025f2ba8ae57f0895a7229c794f2",
+    compatible: new Set(["248c9c6b1626424147e352625da1005bb9aba61ace6cb9d65a0c9e2e9691e3aa"])
+  }]
+]);
+
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+export function normalizeMigrationSql(sql) {
+  return String(sql).replace(/\r\n/g, "\n");
+}
+
+export function computePostgresMigrationChecksum(sql) {
+  return sha256(normalizeMigrationSql(sql));
+}
+
+export function assessPostgresMigrationChecksum({ migrationId, sql, existingChecksum = "" } = {}) {
+  const canonicalChecksum = computePostgresMigrationChecksum(sql);
+  const legacyRule = LEGACY_MIGRATION_CHECKSUMS.get(migrationId) || null;
+  const legacyCompatibleChecksums = Array.from(legacyRule?.compatible || []);
+
+  if (!existingChecksum) {
+    return {
+      state: "missing",
+      canonicalChecksum,
+      legacyCompatibleChecksums
+    };
+  }
+
+  if (existingChecksum === canonicalChecksum) {
+    return {
+      state: "match",
+      canonicalChecksum,
+      legacyCompatibleChecksums
+    };
+  }
+
+  if (
+    legacyCompatibleChecksums.includes(existingChecksum)
+    && (!legacyRule?.canonicalChecksum || legacyRule.canonicalChecksum === canonicalChecksum)
+  ) {
+    return {
+      state: "legacy_compatible",
+      canonicalChecksum,
+      legacyCompatibleChecksums
+    };
+  }
+
+  return {
+    state: "mismatch",
+    canonicalChecksum,
+    legacyCompatibleChecksums
+  };
 }
 
 function createClient(databaseUrl, connectionOptions) {
@@ -35,6 +89,62 @@ export async function getAppliedMigrations(client) {
   return result.rows;
 }
 
+export async function repairPostgresMigrationChecksums({ databaseUrl, connectionOptions = null } = {}) {
+  if (!databaseUrl && !connectionOptions) {
+    throw new Error("DATABASE_URL is required to repair Postgres migration checksums.");
+  }
+
+  const client = createClient(databaseUrl, connectionOptions);
+  await client.connect();
+
+  try {
+    await ensureMigrationTable(client);
+    const applied = await getAppliedMigrations(client);
+    const appliedMap = new Map(applied.map((row) => [row.id, row]));
+    const migrations = await listMigrations("postgres");
+    const summary = [];
+
+    for (const migration of migrations) {
+      const existing = appliedMap.get(migration.id);
+      if (!existing) {
+        continue;
+      }
+
+      const sql = await fs.readFile(migration.filePath, "utf8");
+      const assessment = assessPostgresMigrationChecksum({
+        migrationId: migration.id,
+        sql,
+        existingChecksum: existing.checksum
+      });
+
+      if (assessment.state === "match") {
+        summary.push({ id: migration.id, status: "unchanged" });
+        continue;
+      }
+
+      if (assessment.state === "legacy_compatible") {
+        await client.query(
+          `UPDATE schema_migrations SET checksum = $2 WHERE id = $1`,
+          [migration.id, assessment.canonicalChecksum]
+        );
+        summary.push({
+          id: migration.id,
+          status: "repaired",
+          fromChecksum: existing.checksum,
+          toChecksum: assessment.canonicalChecksum
+        });
+        continue;
+      }
+
+      throw new Error(`Migration checksum mismatch for ${migration.id}.`);
+    }
+
+    return summary;
+  } finally {
+    await client.end();
+  }
+}
+
 export async function applyPostgresMigrations({ databaseUrl, dryRun = false, connectionOptions = null } = {}) {
   if (!databaseUrl && !connectionOptions) {
     throw new Error("DATABASE_URL is required to run Postgres migrations.");
@@ -52,14 +162,22 @@ export async function applyPostgresMigrations({ databaseUrl, dryRun = false, con
 
     for (const migration of migrations) {
       const sql = await fs.readFile(migration.filePath, "utf8");
-      const checksum = sha256(sql);
+      const checksumAssessment = assessPostgresMigrationChecksum({
+        migrationId: migration.id,
+        sql,
+        existingChecksum: appliedMap.get(migration.id)?.checksum || ""
+      });
+      const checksum = checksumAssessment.canonicalChecksum;
       const existing = appliedMap.get(migration.id);
 
       if (existing) {
-        if (existing.checksum !== checksum) {
+        if (checksumAssessment.state === "mismatch") {
           throw new Error(`Migration checksum mismatch for ${migration.id}.`);
         }
-        summary.push({ id: migration.id, status: "already_applied" });
+        summary.push({
+          id: migration.id,
+          status: checksumAssessment.state === "legacy_compatible" ? "already_applied_legacy_compatible" : "already_applied"
+        });
         continue;
       }
 
@@ -101,12 +219,27 @@ export async function getPostgresMigrationStatus(databaseUrl, options = {}) {
     const applied = await getAppliedMigrations(client);
     const migrations = await listMigrations("postgres");
     const appliedMap = new Map(applied.map((row) => [row.id, row]));
+    const status = [];
 
-    return migrations.map((migration) => ({
-      id: migration.id,
-      applied: appliedMap.has(migration.id),
-      appliedAt: appliedMap.get(migration.id)?.applied_at || null
-    }));
+    for (const migration of migrations) {
+      const existing = appliedMap.get(migration.id);
+      const sql = await fs.readFile(migration.filePath, "utf8");
+      const assessment = assessPostgresMigrationChecksum({
+        migrationId: migration.id,
+        sql,
+        existingChecksum: existing?.checksum || ""
+      });
+
+      status.push({
+        id: migration.id,
+        applied: Boolean(existing),
+        appliedAt: existing?.applied_at || null,
+        checksumState: existing ? assessment.state : "pending",
+        checksum: assessment.canonicalChecksum
+      });
+    }
+
+    return status;
   } finally {
     await client.end();
   }

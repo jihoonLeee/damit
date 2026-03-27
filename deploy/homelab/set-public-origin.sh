@@ -56,11 +56,11 @@ TRUSTED_ORIGINS_VALUE="$BASE_URL"
 set_env_value() {
   local key="$1"
   local value="$2"
-  if grep -q "^${key}=" "$ENV_FILE"; then
-    sed -i "s#^${key}=.*#${key}=${value}#g" "$ENV_FILE"
-  else
-    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
-  fi
+  local tmp
+  tmp="$(mktemp)"
+  grep -v "^${key}=" "$ENV_FILE" > "$tmp" || true
+  printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  mv "$tmp" "$ENV_FILE"
 }
 
 cp "$ENV_FILE" "${ENV_FILE}.bak.$(date +%Y%m%d%H%M%S)"

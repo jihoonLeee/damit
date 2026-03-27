@@ -23,13 +23,18 @@
 - `bash deploy/homelab/deploy.sh --env-file ... --project-name ...` is now supported by script design
 - `bash deploy/homelab/smoke.sh --env-file ... --expect-storage-engine ...` is now supported by script design
 - the compose file can now load alternate env files and container names
+- server-side preview rehearsal now proves:
+  - `127.0.0.1:3211/api/v1/health` returns `storageEngine=POSTGRES`
+  - `postgres-preflight` is green on the server
+  - `migration-status` is green on the server after checksum repair
+  - the preview Postgres container reaches healthy state
+- the only remaining manual step is public preview repoint via `/etc/cloudflared/config.yml`
 
 ## Remaining gap
 
-- this batch does not yet prove the live server rehearsal itself
-- the next step is to run the rehearsal on `/home/jihoon/damit/app` and capture:
-  - local health on `3211`
-  - `postgres-preflight`
-  - `migration-status`
-  - preview public smoke
-  - rollback back to SQLite
+- this batch still does not prove the public preview switch or rollback under Cloudflare
+- the next step is to:
+  - point `preview.damit.kr` to `127.0.0.1:3211`
+  - smoke `https://preview.damit.kr`
+  - then point preview back to `127.0.0.1:3210`
+  - confirm rollback back to SQLite

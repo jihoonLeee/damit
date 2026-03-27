@@ -212,6 +212,12 @@ Keep append-only traces for:
 - preview rehearsal should run as a separate stack on port `3211`
 - rollback must be able to return preview to SQLite without affecting `damit.kr`
 
+## Latest PM Postgres rehearsal progress note
+
+- the server-side preview rehearsal now proves local runtime health on `3211` with `storageEngine=POSTGRES`
+- the previously blocking checksum mismatch on `0001_production_core` is now repaired and normalized
+- the only remaining gap for this batch is the manual Cloudflare preview switch and rollback proof
+
 ## Latest PM account surfaces note
 
 - the next product-facing maturity step is not more infrastructure, but clearer account surfaces

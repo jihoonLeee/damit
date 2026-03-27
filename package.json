@@ -23,6 +23,8 @@
     "pg:readiness:production-local": "node scripts/postgres-readiness-check.mjs --env-file=.env.production.local",
     "pg:preflight": "node scripts/postgres-preflight.mjs",
     "pg:preflight:production-local": "node scripts/postgres-preflight.mjs --env-file=.env.production.local",
+    "pg:repair": "node scripts/repair-postgres-migration-checksums.mjs",
+    "pg:repair:production-local": "node scripts/repair-postgres-migration-checksums.mjs --env-file=.env.production.local",
     "migrate:status:production-local": "node scripts/migration-status.mjs --env-file=.env.production.local",
     "smoke:pg:production-local": "node scripts/postgres-production-runtime-smoke.mjs",
     "env:check:staging": "node scripts/runtime-env-check.mjs --profile=staging",
