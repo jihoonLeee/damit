@@ -23,6 +23,23 @@ const homeSessionCopy = document.querySelector("#home-session-copy");
 const homeNextTitle = document.querySelector("#home-next-title");
 const homeNextCopy = document.querySelector("#home-next-copy");
 const homeNextActions = document.querySelector("#home-next-actions");
+const ownerControlSection = document.querySelector("#owner-control-section");
+const ownerControlCopy = document.querySelector("#owner-control-copy");
+const ownerMonthAmount = document.querySelector("#owner-month-amount");
+const ownerMonthAmountCopy = document.querySelector("#owner-month-amount-copy");
+const ownerTotalAmount = document.querySelector("#owner-total-amount");
+const ownerTotalAmountCopy = document.querySelector("#owner-total-amount-copy");
+const ownerLatestConfirmed = document.querySelector("#owner-latest-confirmed");
+const ownerLatestConfirmedCopy = document.querySelector("#owner-latest-confirmed-copy");
+const ownerRiskSummary = document.querySelector("#owner-risk-summary");
+const ownerRiskSummaryCopy = document.querySelector("#owner-risk-summary-copy");
+const ownerFocusBadge = document.querySelector("#owner-focus-badge");
+const ownerFocusMeta = document.querySelector("#owner-focus-meta");
+const ownerFocusTitle = document.querySelector("#owner-focus-title");
+const ownerFocusWhy = document.querySelector("#owner-focus-why");
+const ownerFocusCopy = document.querySelector("#owner-focus-copy");
+const ownerFocusPlan = document.querySelector("#owner-focus-plan");
+const ownerFocusActions = document.querySelector("#owner-focus-actions");
 const homeRoleChip = document.querySelector("#home-role-chip");
 const homeOpsCopy = document.querySelector("#home-ops-copy");
 const homeOpsCard = document.querySelector("#home-ops-card");
@@ -41,6 +58,7 @@ const adminRouteBadge = document.querySelector("#admin-route-badge");
 const state = {
   me: null,
   accountOverview: null,
+  ownerOpsSnapshot: null,
   companies: [],
   csrfToken: "",
   returnReason: "",
@@ -59,6 +77,162 @@ function roleLabel(role) {
     default:
       return "역할 없음";
   }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return "-";
+  }
+  return `${new Intl.NumberFormat("ko-KR").format(amount)}원`;
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleString("ko-KR");
+}
+
+function formatRelativeTime(value) {
+  if (!value) {
+    return "기록 없음";
+  }
+  const target = new Date(value).getTime();
+  if (!Number.isFinite(target)) {
+    return String(value);
+  }
+  const diffMinutes = Math.round((Date.now() - target) / 60000);
+  if (diffMinutes < 1) {
+    return "방금 전";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}분 전`;
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}시간 전`;
+  }
+  return `${Math.round(diffHours / 24)}일 전`;
+}
+
+function describeFocusUrgency(item) {
+  switch (item?.focusReasonKey) {
+    case "confirmation-viewed":
+      return "즉시";
+    case "confirmation-stale":
+    case "quote-missing":
+    case "draft-missing":
+      return "오늘 안에";
+    case "confirm-link-needed":
+    case "on-hold-followup":
+    case "status-review":
+      return "우선 확인";
+    default:
+      return "기록 확인";
+  }
+}
+
+function describeFocusFirstCheck(item) {
+  switch (item?.focusTargetId) {
+    case "quote-card":
+      return "변경 견적과 범위";
+    case "draft-card":
+      return "고객 설명 초안";
+    case "customer-confirm-card":
+      return "고객 확인 링크";
+    case "agreement-card":
+      return "합의 기록";
+    case "timeline-card":
+      return "타임라인";
+    default:
+      return "현재 추천 카드";
+  }
+}
+
+function describeFocusDoneWhen(item) {
+  switch (item?.focusReasonKey) {
+    case "confirmation-viewed":
+      return "최종 상태가 기록되면 충분합니다";
+    case "confirmation-stale":
+      return "후속 연락 여부가 정리되면 충분합니다";
+    case "quote-missing":
+      return "변경 금액이 저장되면 충분합니다";
+    case "draft-missing":
+      return "설명 초안이 저장되면 충분합니다";
+    case "confirm-link-needed":
+      return "확인 링크 또는 합의 기록이 남으면 충분합니다";
+    case "on-hold-followup":
+      return "보류 메모와 다음 연락 시점이 정리되면 충분합니다";
+    case "status-review":
+      return "최종 상태가 분명해지면 충분합니다";
+    default:
+      return "누락된 기록이 없는지만 확인하면 충분합니다";
+  }
+}
+
+function resolveAppStagePath(reasonKey = "", targetId = "") {
+  if (targetId === "quote-card" || reasonKey === "quote-missing") {
+    return "/app/quote";
+  }
+  if (targetId === "draft-card" || reasonKey === "draft-missing") {
+    return "/app/draft";
+  }
+  if (
+    targetId === "customer-confirm-card"
+    || targetId === "agreement-card"
+    || targetId === "timeline-card"
+    || reasonKey === "confirmation-viewed"
+    || reasonKey === "confirmation-stale"
+    || reasonKey === "confirm-link-needed"
+    || reasonKey === "on-hold-followup"
+    || reasonKey === "status-review"
+    || reasonKey === "timeline-followup"
+  ) {
+    return "/app/confirm";
+  }
+  return "/app/capture";
+}
+
+function buildAppCaseHref(jobCaseId, reasonKey = "", targetId = "") {
+  const params = new URLSearchParams();
+  params.set("caseId", jobCaseId);
+  params.set("source", "home");
+  if (reasonKey) {
+    params.set("reason", reasonKey);
+  }
+  if (targetId) {
+    params.set("target", targetId);
+  }
+  return `${resolveAppStagePath(reasonKey, targetId)}?${params.toString()}`;
+}
+
+function formatFocusHeadline(item) {
+  const customer = String(item?.customerLabel || "").trim();
+  const site = String(item?.siteLabel || "").trim();
+  if (customer && site) {
+    return `${customer} · ${site}`;
+  }
+  if (customer) {
+    return customer;
+  }
+  if (site) {
+    return site;
+  }
+  return `작업 ${item?.jobCaseId || "-"}`;
 }
 
 function createActionItems(company, role) {
@@ -351,6 +525,105 @@ function renderWorkflowGuidance() {
 
   renderSummaryCard();
   renderReturnBanner(state.returnReason);
+  renderOwnerControlDesk();
+}
+
+function renderOwnerControlDesk() {
+  const company = state.me?.company || null;
+  const role = company?.role || "";
+  if (!ownerControlSection) {
+    return;
+  }
+
+  if (!company || role !== "OWNER") {
+    ownerControlSection.classList.add("hidden");
+    return;
+  }
+
+  ownerControlSection.classList.remove("hidden");
+
+  const settlement = state.accountOverview?.settlementSummary || null;
+  const snapshot = state.ownerOpsSnapshot || null;
+  const focusCase = snapshot?.focusCases?.[0] || null;
+  const staleOpenCount = Number(snapshot?.signals?.customerConfirmations?.staleOpenCount || 0);
+  const failedDeliveryCount = Number(snapshot?.signals?.auth?.failedDeliveryCount24h || 0);
+  const runtime = snapshot?.runtime || {};
+
+  const monthAmount = Number(settlement?.confirmedAmountThisMonth || 0);
+  const totalAmount = Number(settlement?.totalConfirmedAmount || 0);
+  const monthCount = Number(settlement?.agreementCountThisMonth || 0);
+  const totalCount = Number(settlement?.agreementCountTotal || 0);
+  const latestConfirmedAt = settlement?.latestConfirmedAt || null;
+  const riskItems = [];
+
+  if (staleOpenCount > 0) {
+    riskItems.push(`확인 지연 ${staleOpenCount}건`);
+  }
+  if (failedDeliveryCount > 0) {
+    riskItems.push(`로그인 전달 실패 ${failedDeliveryCount}건`);
+  }
+  if (runtime.mailProvider) {
+    riskItems.push(`메일 ${runtime.mailProvider}`);
+  }
+
+  ownerControlCopy.textContent = settlement?.agreementCountTotal
+    ? `${company.name}의 합의 흐름과 대표 운영 병목을 먼저 보고, 깊은 점검만 필요할 때 /ops로 넘어가면 됩니다.`
+    : `${company.name}의 첫 운영 흐름을 여는 단계입니다. 합의가 아직 없더라도 오늘 가장 먼저 볼 작업 건과 전달 상태를 여기서 확인할 수 있습니다.`;
+
+  ownerMonthAmount.textContent = formatMoney(monthAmount);
+  ownerMonthAmountCopy.textContent = monthCount > 0
+    ? `이번 달 최종 합의 ${monthCount}건이 정리되어 있습니다.`
+    : "이번 달 확정된 합의가 아직 없습니다.";
+
+  ownerTotalAmount.textContent = formatMoney(totalAmount);
+  ownerTotalAmountCopy.textContent = totalCount > 0
+    ? `누적 합의 ${totalCount}건 기준입니다. 상세 내역은 마이페이지에서 다시 볼 수 있습니다.`
+    : "누적 합의 기록이 아직 없습니다.";
+
+  ownerLatestConfirmed.textContent = latestConfirmedAt ? formatRelativeTime(latestConfirmedAt) : "기록 없음";
+  ownerLatestConfirmedCopy.textContent = latestConfirmedAt
+    ? `최근 합의 시각 ${formatDateTime(latestConfirmedAt)}`
+    : "최근 합의가 아직 없어 오늘 작업 흐름을 먼저 여는 것이 좋습니다.";
+
+  ownerRiskSummary.textContent = riskItems.length ? riskItems.join(" · ") : "즉시 경고 없음";
+  ownerRiskSummaryCopy.textContent = riskItems.length
+    ? "고객 확인 지연이나 로그인 전달 실패가 있어 운영 콘솔 점검도 같이 보는 편이 좋습니다."
+    : "지금은 큰 운영 경고보다 작업 흐름을 이어가는 편이 더 중요합니다.";
+
+  if (!focusCase) {
+    ownerFocusBadge.textContent = "운영 안정";
+    ownerFocusBadge.className = "status-badge AGREED";
+    ownerFocusMeta.textContent = "대표 병목 없음";
+    ownerFocusTitle.textContent = "오늘 즉시 점검할 대표 병목은 없습니다.";
+    ownerFocusWhy.textContent = "지금은 운영 경고보다 작업 허브에서 현장 기록과 견적 흐름을 이어가는 편이 더 가치가 큽니다.";
+    ownerFocusCopy.textContent = "합의 흐름이나 고객 확인 상태는 마이페이지와 운영 콘솔에서 다시 볼 수 있습니다.";
+    ownerFocusPlan.innerHTML = `
+      <span class="ops-handoff-plan-pill">먼저 작업 허브</span>
+      <span class="ops-handoff-plan-pill">완료 기준 오늘 작업 건 선택</span>
+    `;
+    ownerFocusActions.innerHTML = `
+      <a class="primary-button landing-action" href="/app/capture">작업 허브 열기</a>
+      <a class="ghost-button landing-action" href="/account">정산 다시 보기</a>
+      <a class="ghost-button landing-action" href="/ops">운영 콘솔 보기</a>
+    `;
+    return;
+  }
+
+  ownerFocusBadge.textContent = focusCase.focusBadge || "운영 판단";
+  ownerFocusBadge.className = `status-badge ${focusCase.focusTone === "warning" ? "ON_HOLD" : focusCase.focusTone === "good" ? "AGREED" : "neutral"}`;
+  ownerFocusMeta.textContent = `${describeFocusUrgency(focusCase)} · 작업 ${focusCase.jobCaseId}`;
+  ownerFocusTitle.textContent = `${formatFocusHeadline(focusCase)}부터 확인하세요`;
+  ownerFocusWhy.textContent = focusCase.focusWhyNow || focusCase.focusCopy || "오늘 가장 먼저 확인해야 할 작업 건입니다.";
+  ownerFocusCopy.textContent = focusCase.focusCopy || "현재 병목을 짧게 정리한 뒤 다음 단계로 넘기면 됩니다.";
+  ownerFocusPlan.innerHTML = `
+    <span class="ops-handoff-plan-pill">먼저 ${escapeHtml(describeFocusFirstCheck(focusCase))}</span>
+    <span class="ops-handoff-plan-pill">완료 기준 ${escapeHtml(describeFocusDoneWhen(focusCase))}</span>
+  `;
+  ownerFocusActions.innerHTML = `
+    <a class="primary-button landing-action" href="${escapeHtml(buildAppCaseHref(focusCase.jobCaseId, focusCase.focusReasonKey, focusCase.focusTargetId))}">이 작업 건 열기</a>
+    <a class="ghost-button landing-action" href="/ops">운영 콘솔 깊게 보기</a>
+    <a class="ghost-button landing-action" href="/account">정산 다시 보기</a>
+  `;
 }
 
 function readCookie(name) {
@@ -505,6 +778,15 @@ async function loadMe() {
   } catch {
     state.accountOverview = null;
   }
+  if (state.me?.company?.role === "OWNER") {
+    try {
+      state.ownerOpsSnapshot = await request("/api/v1/admin/ops-snapshot");
+    } catch {
+      state.ownerOpsSnapshot = null;
+    }
+  } else {
+    state.ownerOpsSnapshot = null;
+  }
   renderCompanySwitcher();
   renderWorkflowGuidance();
 }
@@ -540,6 +822,15 @@ switchCompanyButton.addEventListener("click", async () => {
       state.accountOverview = await request("/api/v1/account/overview");
     } catch {
       state.accountOverview = null;
+    }
+    if (payload.company?.role === "OWNER") {
+      try {
+        state.ownerOpsSnapshot = await request("/api/v1/admin/ops-snapshot");
+      } catch {
+        state.ownerOpsSnapshot = null;
+      }
+    } else {
+      state.ownerOpsSnapshot = null;
     }
     state.returnReason = "company-switched";
     state.returnNext = getRecommendedRoute(payload.company, payload.company.role).primaryPath;

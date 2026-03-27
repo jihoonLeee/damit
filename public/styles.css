@@ -853,9 +853,24 @@ body.review-detail .card {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
+.home-owner-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
 .home-overview-card,
 .home-route-card,
 .home-role-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(180, 155, 119, 0.4);
+  background: linear-gradient(180deg, rgba(245, 236, 223, 0.92) 0%, rgba(255, 251, 245, 0.98) 100%);
+  box-shadow: var(--shadow);
+}
+.home-owner-stat,
+.home-owner-focus-card {
   display: grid;
   gap: 10px;
   padding: 18px;
@@ -870,6 +885,12 @@ body.review-detail .card {
     linear-gradient(90deg, rgba(201, 132, 43, 0.1) 0%, transparent 28%);
   border-color: rgba(27, 79, 209, 0.18);
 }
+.home-owner-stat-strong {
+  background:
+    linear-gradient(180deg, rgba(230, 238, 252, 0.9) 0%, rgba(255, 251, 245, 0.98) 100%),
+    linear-gradient(90deg, rgba(27, 79, 209, 0.08) 0%, transparent 28%);
+  border-color: rgba(27, 79, 209, 0.18);
+}
 .home-role-card-strong {
   background: var(--primary);
   border-color: var(--primary);
@@ -880,11 +901,29 @@ body.review-detail .card {
   font-size: 20px;
   line-height: 1.4;
 }
+.home-owner-stat strong,
+.home-owner-focus-card strong {
+  font-size: 20px;
+  line-height: 1.4;
+}
 .home-overview-card p,
 .home-route-card p,
 .home-role-card p {
   color: var(--muted);
   line-height: 1.6;
+}
+.home-owner-stat p,
+.home-owner-focus-card p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.home-owner-stat strong {
+  letter-spacing: -0.03em;
+}
+.home-owner-focus-card {
+  margin-top: 14px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(235, 245, 255, 0.94) 100%);
+  border-color: rgba(84, 132, 255, 0.24);
 }
 .home-route-card.is-muted {
   background: linear-gradient(180deg, rgba(248, 242, 233, 0.92) 0%, rgba(255, 251, 245, 0.98) 100%);
@@ -1231,7 +1270,8 @@ body.review-detail .card {
     width: 100%;
   }
   .home-overview-grid,
-  .home-route-grid {
+  .home-route-grid,
+  .home-owner-grid {
     grid-template-columns: 1fr;
   }
   .home-role-grid {
@@ -2611,8 +2651,10 @@ body.review-detail .card {
 .timeline-item,
 .home-overview-card,
 .home-route-card,
+.home-owner-stat,
 .account-session-stat,
 .admin-principle-item,
+.home-owner-focus-card,
 .ops-handoff-focus-card,
 .ops-handoff-item,
 .workspace-signal-card,
@@ -2719,6 +2761,11 @@ body.review-detail .card {
   background: var(--primary);
   border-color: var(--primary);
 }
+.home-owner-stat-strong {
+  background: var(--primary);
+  border-color: var(--primary);
+  border-width: 2px;
+}
 
 .landing-stat-card.strong-card span,
 .landing-stat-card.strong-card strong,
@@ -2729,6 +2776,9 @@ body.review-detail .card {
 .home-overview-card-strong strong,
 .home-overview-card-strong p,
 .home-overview-card-strong .workspace-priority-kicker,
+.home-owner-stat-strong strong,
+.home-owner-stat-strong p,
+.home-owner-stat-strong .workspace-priority-kicker,
 .home-role-card-strong strong,
 .home-role-card-strong p,
 .home-role-card-strong .workspace-priority-kicker {
@@ -2769,7 +2819,9 @@ body.review-detail .card {
 .metric-card strong,
 .ops-card strong,
 .home-route-card strong,
-.home-overview-card strong {
+.home-overview-card strong,
+.home-owner-stat strong,
+.home-owner-focus-card strong {
   letter-spacing: -0.02em;
 }
 
