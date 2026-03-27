@@ -1,4 +1,5 @@
-﻿import { HttpError } from "./http.js";
+import { config } from "./config.js";
+import { HttpError } from "./http.js";
 
 const allowedMimeTypes = new Set([
   "image/jpeg",
@@ -22,11 +23,18 @@ export async function parseMultipart(request) {
   const boundary = boundaryMatch[1] || boundaryMatch[2];
   const chunks = [];
   let totalLength = 0;
+  const maxMultipartBodyBytes = Number.parseInt(String(config.maxMultipartBodyBytes), 10);
+  const maxUploadFileBytes = Number.parseInt(String(config.maxUploadFileBytes), 10);
+  const contentLength = Number.parseInt(String(request.headers["content-length"] ?? ""), 10);
+
+  if (Number.isFinite(maxMultipartBodyBytes) && maxMultipartBodyBytes > 0 && Number.isFinite(contentLength) && contentLength > maxMultipartBodyBytes) {
+    throw new HttpError(413, "REQUEST_TOO_LARGE", "업로드 요청이 너무 커요. 첨부를 줄여서 다시 시도해 주세요.");
+  }
 
   for await (const chunk of request) {
     totalLength += chunk.length;
-    if (totalLength > 15 * 1024 * 1024) {
-      throw new HttpError(422, "VALIDATION_ERROR", "업로드 용량이 너무 커요");
+    if (Number.isFinite(maxMultipartBodyBytes) && maxMultipartBodyBytes > 0 && totalLength > maxMultipartBodyBytes) {
+      throw new HttpError(413, "REQUEST_TOO_LARGE", "업로드 요청이 너무 커요. 첨부를 줄여서 다시 시도해 주세요.");
     }
     chunks.push(chunk);
   }
@@ -103,7 +111,7 @@ export async function parseMultipart(request) {
         photos: "INVALID_TYPE"
       });
     }
-    if (file.data.length > 10 * 1024 * 1024) {
+    if (Number.isFinite(maxUploadFileBytes) && maxUploadFileBytes > 0 && file.data.length > maxUploadFileBytes) {
       throw new HttpError(422, "VALIDATION_ERROR", "사진 한 장 최대 10MB까지 가능해요", {
         photos: "TOO_LARGE"
       });

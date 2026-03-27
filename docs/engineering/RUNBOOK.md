@@ -29,19 +29,21 @@
 - `MAIL_PROVIDER=FILE`
 - `AUTH_DEBUG_LINKS=true`
 
-### Staging
+### Preview
 
-- current runtime: SQLite bootstrap on Fly
+- current runtime: homelab preview on `https://preview.damit.kr`
+- current DB mode: SQLite
 - next DB target: Supabase Free Postgres via `DATABASE_URL`
-- current mail mode: `FILE`
-- current auth mode: `SameSite=Strict` session cookies, refresh CSRF required
+- current mail mode: `RESEND`
+- current auth mode: `SameSite=Strict` session cookies, refresh CSRF required, trusted-origin enforcement ON
 
 ### Production
 
-- current runtime: SQLite pilot
-- future DB target: external Postgres after adapter completion
-- target mail mode: `MAIL_PROVIDER=RESEND`
-- target auth mode: `AUTH_DEBUG_LINKS=false`, `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
+- current runtime: homelab public root on `https://damit.kr`
+- current DB mode: SQLite pilot
+- next DB target: external Postgres after preview rehearsal
+- current mail mode: `MAIL_PROVIDER=RESEND`
+- current auth mode: `AUTH_DEBUG_LINKS=false`, `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
 
 ## Auth hardening defaults
 
@@ -50,6 +52,10 @@
 - session cookies default to `SameSite=Strict`
 - idle timeout default is 12 hours
 - login challenge TTL default is 15 minutes
+- proxy-derived client IP is trusted only when the request comes from a trusted local/private proxy hop
+- JSON body limit default is `64 KiB`
+- multipart request body limit default is `15 MiB`
+- single upload file limit default is `10 MiB`
 - auth challenge public rate limit default is `5 / 10 minutes / IP`
 - auth verify public rate limit default is `12 / 10 minutes / IP`
 - customer confirmation read public rate limit default is `30 / 10 minutes / IP`
@@ -71,24 +77,24 @@
 3. confirm `Retry-After` is present on invitation create/reissue throttles
 4. keep the repository-level per-email and per-invitation cooldown behavior intact
 
-## Staging checks
+## Preview checks
 
 1. `GET /api/v1/health`
-2. `GET /beta-app`
-3. `GET /api/v1/admin/postgres-preflight` with owner token
-4. confirm staging app name, owner token, and volume are separate from production
+2. open `https://preview.damit.kr`
+3. confirm login, home, app, ops, account, admin load on preview
+4. confirm preview env values differ from root before any DB rehearsal
 
 Expected current result:
 
 - health is green
-- beta app is reachable
-- postgres preflight returns `POSTGRES_NOT_CONFIGURED` until Supabase is attached
+- preview app is reachable
+- postgres preflight returns `POSTGRES_NOT_CONFIGURED` until Supabase-backed preview rehearsal begins
 
 ## Supabase attach checklist
 
-1. create a Supabase staging project
+1. create a Supabase project for preview rehearsal
 2. copy the connection string from `Connect`
-3. set `DATABASE_URL` on the Fly staging app
+3. set `DATABASE_URL` on the preview/homelab env
 4. set `POSTGRES_SSL_MODE=require`
 5. set `POSTGRES_APPLICATION_NAME`
 6. run `npm run pg:readiness`
@@ -175,6 +181,12 @@ Expected local result:
 6. keep `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
 7. optionally add `TRUSTED_ORIGINS` only when more than one trusted browser origin is intentionally allowed
 8. verify login challenge delivery from `/login` without relying on any debug link
+
+Current result:
+
+- live public runtime already uses `MAIL_PROVIDER=RESEND`
+- `AUTH_DEBUG_LINKS=false` should remain true for public and preview unless an isolated debug drill is intentional
+- next mail work is not initial delivery, but monitoring and channel expansion
 
 
 ## Ops auth/mail readiness check

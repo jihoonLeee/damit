@@ -26,6 +26,7 @@ config.mailProvider = "FILE";
 config.appBaseUrl = "";
 config.authDebugLinks = true;
 config.authEnforceTrustedOrigin = false;
+config.trustProxyHeaders = true;
 config.sessionCookieSameSite = "Strict";
 config.csrfCookieSameSite = "Strict";
 config.systemAdminEmails = [];
@@ -216,6 +217,49 @@ test("auth challenge hides debug link when debug mode is disabled", async () => 
     assert.match(payload.delivery.targetMasked, /@/);
   } finally {
     config.authDebugLinks = true;
+  }
+});
+
+test("auth challenge does not leak provider error detail on delivery failure", async () => {
+  const previousMailProvider = config.mailProvider;
+  const previousResendApiKey = config.resendApiKey;
+  const previousMailFrom = config.mailFrom;
+  config.mailProvider = "RESEND";
+  config.resendApiKey = "";
+  config.mailFrom = "login@updates.damit.kr";
+
+  try {
+    const { response, payload } = await issueChallenge("delivery-failure@example.com");
+    assert.equal(response.status, 502);
+    assert.equal(payload.error.code, "MAIL_DELIVERY_FAILED");
+    assert.equal(payload.error.fieldErrors, undefined);
+    assert.equal(Object.hasOwn(payload.error, "cause"), false);
+  } finally {
+    config.mailProvider = previousMailProvider;
+    config.resendApiKey = previousResendApiKey;
+    config.mailFrom = previousMailFrom;
+  }
+});
+
+test("auth challenge rejects oversized JSON bodies", async () => {
+  const previousMaxJsonBodyBytes = config.maxJsonBodyBytes;
+  config.maxJsonBodyBytes = 32;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/auth/challenges`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "too-large@example.com",
+        memo: "x".repeat(256)
+      })
+    });
+    assert.equal(response.status, 413);
+    const payload = await response.json();
+    assert.equal(payload.error.code, "REQUEST_TOO_LARGE");
+    assert.match(payload.error.message, /요청 본문이 너무 커요/);
+  } finally {
+    config.maxJsonBodyBytes = previousMaxJsonBodyBytes;
   }
 });
 

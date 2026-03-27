@@ -23,6 +23,7 @@ config.backupDir = path.join(tempRoot, "data", "backups");
 config.dbFilePath = path.join(tempRoot, "data", "app.sqlite");
 config.storageEngine = "SQLITE";
 config.appBaseUrl = "";
+config.trustProxyHeaders = true;
 
 await fs.mkdir(config.publicDir, { recursive: true });
 for (const fileName of ["landing.html", "login.html", "home.html", "ops.html", "index.html", "confirm.html"]) {
@@ -180,6 +181,7 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
 
   const publicViewResponse = await fetch(`${baseUrl}/api/v1/public/confirm/${encodeURIComponent(token)}`);
   assert.equal(publicViewResponse.status, 200);
+  assert.match(publicViewResponse.headers.get("cache-control") || "", /no-store/);
   const publicView = await publicViewResponse.json();
   assert.equal(publicView.link.status, "VIEWED");
   assert.equal(publicView.jobCase.siteLabel, "송파 힐스테이트 1203호");

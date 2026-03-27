@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import { config } from "./config.js";
 import { captureServerError } from "./observability/sentry.js";
 
 export class HttpError extends Error {
@@ -60,27 +61,37 @@ export function redirect(response, status, location) {
 }
 
 export function notFound(response) {
-  response.writeHead(404, buildStandardHeaders("application/json; charset=utf-8"));
-  response.end(JSON.stringify({
+  jsonNoStore(response, 404, {
     error: {
       code: "NOT_FOUND",
-      message: "요청한 리소스를 찾을 수 없어요",
+      message: "요청한 리소스를 찾을 수 없어요.",
       requestId: createRequestId()
     }
-  }));
+  });
 }
 
-export async function readJsonBody(request) {
-  const bodyText = await readTextBody(request);
+export async function readJsonBody(request, options = {}) {
+  const bodyText = await readTextBody(request, options);
   if (!bodyText) {
     return {};
   }
   return JSON.parse(bodyText);
 }
 
-export async function readTextBody(request) {
+export async function readTextBody(request, options = {}) {
+  const maxBytes = Number.parseInt(String(options.maxBytes ?? config.maxJsonBodyBytes), 10);
+  const contentLength = Number.parseInt(String(request.headers["content-length"] ?? ""), 10);
+  if (Number.isFinite(maxBytes) && maxBytes > 0 && Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new HttpError(413, "REQUEST_TOO_LARGE", "요청 본문이 너무 커요. 내용을 줄여서 다시 시도해 주세요.");
+  }
+
   const chunks = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
+    totalBytes += chunk.length;
+    if (Number.isFinite(maxBytes) && maxBytes > 0 && totalBytes > maxBytes) {
+      throw new HttpError(413, "REQUEST_TOO_LARGE", "요청 본문이 너무 커요. 내용을 줄여서 다시 시도해 주세요.");
+    }
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString("utf8");
@@ -93,7 +104,7 @@ export function createRequestId() {
 export function sendError(response, requestId, error, request = null) {
   const status = error instanceof HttpError ? error.status : 500;
   const code = error instanceof HttpError ? error.code : "INTERNAL_ERROR";
-  const message = error instanceof HttpError ? error.message : "잠시 후 다시 시도해주세요";
+  const message = error instanceof HttpError ? error.message : "일시적인 문제가 발생했어요. 잠시 후 다시 시도해 주세요.";
   const payload = {
     error: {
       code,

@@ -7,21 +7,24 @@
 
 ## Current state
 
-- deployment works
-- single-machine SQLite runtime is acceptable for early pilot
-- multi-user, audit-heavy, long-lived production still needs more infrastructure
+- public domain is live on `https://damit.kr`
+- preview environment is live on `https://preview.damit.kr`
+- current public runtime is homelab + Cloudflare Tunnel + single-machine SQLite
+- real mail delivery via Resend is now working
+- multi-user, audit-heavy, long-lived production still needs stronger data and recovery guarantees
 
 ## PM summary
 
-- pilot on SQLite is still valid
-- do not pay for heavy DB infrastructure too early
-- prepare the codebase for Postgres now, then attach Supabase Free when staging needs a real external DB
+- public trusted pilot on SQLite is still valid
+- do not claim broader production maturity before Postgres rehearsal, rollback proof, and stronger abuse controls
+- keep feature expansion secondary to truthfulness, recovery confidence, and data durability
+- prepare the codebase and runbooks for Postgres now, then rehearse preview cutover before any root cutover
 
 ## Required production transitions
 
 ### 1. Data storage
 
-- current: SQLite on Fly volume
+- current: SQLite on homelab persistent volume
 - next external DB target: Supabase Free Postgres
 - later production-grade target: paid managed Postgres if usage and ops needs justify it
 
@@ -81,14 +84,14 @@ Keep append-only traces for:
 
 ### Stage 1
 
-- Fly.io app
+- homelab app behind Cloudflare Tunnel
 - SQLite runtime
-- staging bootstrap complete
+- public root + preview complete
 
 ### Stage 2
 
-- Supabase Free for staging and early external DB validation
-- no production cutover yet
+- Supabase Free for preview rehearsal and early external DB validation
+- no root runtime cutover yet
 
 ### Stage 3
 
@@ -128,8 +131,8 @@ Keep append-only traces for:
 - the `Postgres auth/runtime readiness` batch is now locally complete
 - repository-backed auth/session/company-context parity is implemented for SQLite and Postgres
 - local regression evidence is green
-- the next missing proof is a real staging `POSTGRES` runtime smoke
-- that staging proof is currently blocked by Fly billing, not by a known code defect
+- the next missing proof is a real server-side preview `POSTGRES` runtime smoke
+- that proof is now blocked by rehearsal work, not by a known code defect
 
 ## Latest PM restore note
 
@@ -186,11 +189,21 @@ Keep append-only traces for:
 - real mail smoke now has a dedicated ignored local env path: `.env.production.local`
 - the production-like smoke command is `npm run smoke:mail:production-local`
 - live Resend proof still depends on real credentials and a manual inbox confirmation step
+
 ## Latest PM mail hold note
 
-- email login cutover is still `HOLD`
-- the remaining blocker is verified sender-domain setup, not a known code defect
-- until a verified domain exists, the product should treat real mail as an operational dependency that is prepared but not yet cut over
+- email login cutover is now `GO` for the current public pilot
+- real Resend delivery is working on the live runtime
+- the remaining mail work is channel expansion and abuse monitoring, not basic delivery enablement
+
+## Latest PM public truth and boundary note
+
+- public product copy and operator docs are now being aligned to the real live state
+- public customer confirmation token reads are non-cacheable
+- public login failure responses no longer expose provider internals
+- JSON and multipart request bodies now have explicit size ceilings
+- proxy-derived client IPs are no longer trusted unconditionally
+- broader public production still remains `HOLD` until durable throttling and server-side Postgres rehearsal are also proven
 
 ## Latest PM account surfaces note
 

@@ -135,7 +135,7 @@ async function handleApiRequest(request, response, repositories) {
       userAgent: getUserAgent(request)
     });
     const payload = await buildPublicCustomerConfirmationPayload(repositories, link);
-    json(response, 200, payload);
+    jsonNoStore(response, 200, payload);
     return;
   }
 
@@ -234,9 +234,7 @@ async function handleApiRequest(request, response, repositories) {
         deliveryProvider: (config.mailProvider || "UNKNOWN").toUpperCase(),
         deliveryStatus: "FAILED"
       });
-      throw new HttpError(502, "MAIL_DELIVERY_FAILED", "로그인 메일을 보내지 못했습니다. 메일 설정을 확인한 뒤 다시 시도해 주세요.", {
-        cause: error.message
-      });
+      throw new HttpError(502, "MAIL_DELIVERY_FAILED", "로그인 메일을 보내지 못했습니다. 메일 설정을 확인한 뒤 다시 시도해 주세요.");
     }
   }
 
@@ -1313,12 +1311,50 @@ function buildPublicConfirmationUrl(request, token) {
   return origin + "/confirm/" + encodeURIComponent(token);
 }
 
-function getRequestIp(request) {
-  const forwarded = request.headers["x-forwarded-for"];
-  if (forwarded) {
-    return String(forwarded).split(",")[0].trim();
+function isTrustedProxyAddress(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) {
+    return false;
   }
-  return request.socket?.remoteAddress || null;
+
+  const withoutPort = normalized.startsWith("[")
+    ? normalized.slice(1).split("]")[0]
+    : normalized.split(":")[0];
+
+  return withoutPort === "127.0.0.1"
+    || withoutPort === "::1"
+    || withoutPort === "::ffff:127.0.0.1"
+    || withoutPort === "localhost"
+    || withoutPort.startsWith("10.")
+    || withoutPort.startsWith("192.168.")
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(withoutPort)
+    || withoutPort.startsWith("fc")
+    || withoutPort.startsWith("fd")
+    || withoutPort.startsWith("fe80:");
+}
+
+function pickForwardedIp(value) {
+  const first = String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)[0];
+  return first || null;
+}
+
+function getRequestIp(request) {
+  const remoteAddress = request.socket?.remoteAddress || null;
+  if (config.trustProxyHeaders && isTrustedProxyAddress(remoteAddress)) {
+    const cloudflareIp = pickForwardedIp(request.headers["cf-connecting-ip"]);
+    if (cloudflareIp) {
+      return cloudflareIp;
+    }
+
+    const forwarded = pickForwardedIp(request.headers["x-forwarded-for"]);
+    if (forwarded) {
+      return forwarded;
+    }
+  }
+  return remoteAddress;
 }
 
 function getUserAgent(request) {
