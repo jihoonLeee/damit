@@ -126,6 +126,27 @@ If a deploy breaks P0 flow, return to the last known healthy release before atte
 - intended use: verify Postgres `systemRepository` backup/reset without switching app runtime to `POSTGRES`
 - staging Fly machine example:
   - `fly ssh console -a field-agreement-jihoon-staging -C "sh -lc 'cd /app && node scripts/postgres-admin-smoke.mjs'"`
+
+## Local Postgres runtime smoke
+
+1. keep Supabase connection values in `.env.production.local`
+2. use a valid Postgres connection string, not the dashboard `https://` URL
+3. run:
+   - `npm run pg:readiness:production-local`
+   - `npm run pg:preflight:production-local`
+   - `npm run migrate:status:production-local`
+   - `npm run smoke:pg:production-local`
+4. confirm the smoke reports:
+   - `health`
+   - owner login
+   - invitation/join
+   - company switch
+   - job case create
+   - field record create/link
+   - quote update
+   - draft generation
+   - agreement record
+5. do not discuss runtime cutover until all four commands are green
 ## Local restore rehearsal
 
 1. run `npm run backup:restore:local`

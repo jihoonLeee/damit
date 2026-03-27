@@ -42,6 +42,18 @@ test("postgres readiness recognizes a valid Supabase-style setup", () => {
   assert.equal(report.errors.length, 0);
 });
 
+test("postgres readiness recognizes a Supabase pooler host", () => {
+  const report = assessPostgresReadiness({
+    DATABASE_URL: "postgresql://postgres.projectref:secret@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres",
+    POSTGRES_SSL_MODE: "require",
+    POSTGRES_APPLICATION_NAME: "damit-production",
+    POSTGRES_POOL_MAX: "10"
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.provider, "SUPABASE");
+});
+
 test("postgres readiness warns when using a non-Supabase host", () => {
   const report = assessPostgresReadiness({
     DATABASE_URL: "postgres://postgres:secret@example.com:5432/postgres",

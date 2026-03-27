@@ -301,6 +301,21 @@ Keep append-only traces for:
   - only then evaluate runtime cutover
 - PM judgment remains `cutover HOLD`, `readiness GO`
 
+## Latest PM Postgres runtime smoke note
+
+- local `production-local` readiness, preflight, and migration-status commands are now green against the Supabase session pooler
+- local Postgres runtime happy-path smoke is now green through:
+  - login
+  - invitation/join
+  - company switch
+  - job case create
+  - field record create/link
+  - quote update
+  - draft generation
+  - agreement recording
+- runtime cutover remains `HOLD`
+- the next required proof is server-side rollout and rollback evidence, not more local connectivity work
+
 ## Latest PM ops/app warning-copy note
 
 - warning cards on `/ops` and `/app` now use shorter decision-first wording

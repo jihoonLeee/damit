@@ -15,7 +15,7 @@ function normalizeSslMode(value) {
 }
 
 function looksSupabaseHost(hostname) {
-  return /\.supabase\.(co|in)$/i.test(String(hostname || "").trim());
+  return /(?:\.supabase\.(co|in)|\.pooler\.supabase\.com)$/i.test(String(hostname || "").trim());
 }
 
 export function assessPostgresReadiness(envLike = process.env) {

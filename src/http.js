@@ -107,6 +107,9 @@ export function sendError(response, requestId, error, request = null) {
   }
 
   if (!(error instanceof HttpError) || status >= 500) {
+    if (!(error instanceof HttpError)) {
+      console.error(error);
+    }
     captureServerError(error, {
       channel: "http",
       requestId,

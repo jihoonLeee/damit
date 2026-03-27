@@ -259,7 +259,8 @@ test("postgres repository bundle supports injected pools and staff-scoped list r
 });
 
 test("postgres repository detail reads return tenant-ready shape", async () => {
-  const bundle = createRepositoryBundle({ engine: "POSTGRES", pool: createFakePool() });
+  const pool = createFakePool();
+  const bundle = createRepositoryBundle({ engine: "POSTGRES", pool });
 
   const detail = await bundle.jobCaseRepository.getDetailById("jc_1", {
     companyId: "comp_1",
@@ -278,6 +279,7 @@ test("postgres repository detail reads return tenant-ready shape", async () => {
   assert.deepEqual(detail.timelineEvents[0].payload_json, { agreementId: "ar_1" });
   assert.equal(fieldRecords[0].created_at, "2026-03-12T00:10:00.000Z");
   assert.equal(photos[0].url, "/uploads/photo_1.jpg");
+  assert.deepEqual(pool.calls[0].params, ["jc_1", "comp_1", "user_staff"]);
 
   await bundle.close();
 });

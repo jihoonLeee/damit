@@ -856,13 +856,13 @@ function buildListByScopeQuery(scope = {}) {
   };
 }
 
-function buildJobCaseAccessCondition(scope = {}, alias = "jc") {
+function buildJobCaseAccessCondition(scope = {}, alias = "jc", startIndex = 0) {
   const params = [];
   const conditions = [];
 
   const pushParam = (value) => {
     params.push(value);
-    return `$${params.length}`;
+    return `$${startIndex + params.length}`;
   };
 
   if (scope.companyId) {
@@ -1362,7 +1362,7 @@ export function createPostgresRepositoryBundle({
         return result.rows.map((row) => toJobCaseListItem(row));
       },
       getDetailById: async (jobCaseId, scope = {}) => {
-        const access = buildJobCaseAccessCondition(scope, "jc");
+          const access = buildJobCaseAccessCondition(scope, "jc", 1);
         const jobCaseResult = await pool.query(
           `
             SELECT jc.*

@@ -20,7 +20,11 @@
     "test:beta": "node tests/beta-workspace.test.js",
     "test:confirm": "node tests/customer-confirmation.test.js",
     "pg:readiness": "node scripts/postgres-readiness-check.mjs",
+    "pg:readiness:production-local": "node scripts/postgres-readiness-check.mjs --env-file=.env.production.local",
     "pg:preflight": "node scripts/postgres-preflight.mjs",
+    "pg:preflight:production-local": "node scripts/postgres-preflight.mjs --env-file=.env.production.local",
+    "migrate:status:production-local": "node scripts/migration-status.mjs --env-file=.env.production.local",
+    "smoke:pg:production-local": "node scripts/postgres-production-runtime-smoke.mjs",
     "env:check:staging": "node scripts/runtime-env-check.mjs --profile=staging",
     "env:check:production": "node scripts/runtime-env-check.mjs --profile=production",
     "smoke:mail:production-local": "node scripts/mail-login-smoke.mjs"
