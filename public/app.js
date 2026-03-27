@@ -260,6 +260,23 @@ const elements = {
   stageActionCompletion: document.querySelector("#stage-action-completion"),
   stageActionPrimary: document.querySelector("#stage-action-primary"),
   stageActionSecondary: document.querySelector("#stage-action-secondary"),
+  overviewHubCard: document.querySelector("#overview-hub-card"),
+  overviewHubBadge: document.querySelector("#overview-hub-badge"),
+  overviewHubTitle: document.querySelector("#overview-hub-title"),
+  overviewHubCopy: document.querySelector("#overview-hub-copy"),
+  overviewRouteGrid: document.querySelector("#overview-route-grid"),
+  overviewRouteCaptureBadge: document.querySelector("#overview-route-capture-badge"),
+  overviewRouteCaptureCopy: document.querySelector("#overview-route-capture-copy"),
+  overviewRouteCaptureLink: document.querySelector("#overview-route-capture-link"),
+  overviewRouteQuoteBadge: document.querySelector("#overview-route-quote-badge"),
+  overviewRouteQuoteCopy: document.querySelector("#overview-route-quote-copy"),
+  overviewRouteQuoteLink: document.querySelector("#overview-route-quote-link"),
+  overviewRouteDraftBadge: document.querySelector("#overview-route-draft-badge"),
+  overviewRouteDraftCopy: document.querySelector("#overview-route-draft-copy"),
+  overviewRouteDraftLink: document.querySelector("#overview-route-draft-link"),
+  overviewRouteConfirmBadge: document.querySelector("#overview-route-confirm-badge"),
+  overviewRouteConfirmCopy: document.querySelector("#overview-route-confirm-copy"),
+  overviewRouteConfirmLink: document.querySelector("#overview-route-confirm-link"),
   caseProgressCopy: document.querySelector("#case-progress-copy"),
   caseProgressList: document.querySelector("#case-progress-list"),
   metricOriginal: document.querySelector("#metric-original"),
@@ -1356,6 +1373,183 @@ function renderStageAction(snapshot) {
   setStageActionButton(elements.stageActionSecondary, action.secondary);
 }
 
+function setOverviewRouteCard(badgeNode, copyNode, linkNode, { badge, badgeClass, copy, href, label }) {
+  if (badgeNode) {
+    badgeNode.textContent = badge;
+    badgeNode.className = `status-badge ${badgeClass}`;
+  }
+  if (copyNode) {
+    copyNode.textContent = copy;
+  }
+  if (linkNode) {
+    linkNode.href = href;
+    linkNode.textContent = label;
+  }
+}
+
+function renderOverviewHub(snapshot) {
+  if (!elements.overviewHubCard || !elements.overviewRouteGrid) {
+    return;
+  }
+
+  if (workflowScreen !== "overview") {
+    elements.overviewHubCard.classList.add("hidden");
+    elements.overviewRouteGrid.classList.add("hidden");
+    return;
+  }
+
+  const detail = state.selectedJobCaseDetail;
+  const hasSelectedJobCase = Boolean(state.selectedJobCaseId && detail);
+  const hasQuote = hasStoredQuote(detail);
+  const hasDraft = Boolean(detail?.latestDraftMessage?.body);
+  const hasConfirmationLink = Boolean(state.latestConfirmationUrl);
+  const status = detail?.currentStatus || "UNEXPLAINED";
+  const terminal = isTerminalStatus(status);
+  const fieldRecordCount = detail?.fieldRecords?.length || 0;
+  const routeCaseId = state.selectedJobCaseId || "";
+
+  elements.overviewHubCard.classList.remove("hidden");
+  elements.overviewRouteGrid.classList.remove("hidden");
+
+  if (!hasSelectedJobCase) {
+    elements.overviewHubBadge.textContent = "시작점";
+    elements.overviewHubBadge.className = "ops-badge tone-neutral";
+    elements.overviewHubTitle.textContent = "먼저 현장 기록 단계에서 흐름을 시작해 주세요.";
+    elements.overviewHubCopy.textContent = "작업 건이 아직 선택되지 않았습니다. 현장 기록을 남기거나 목록에서 기존 작업 건을 고르면 각 단계 화면으로 더 정확하게 들어갈 수 있습니다.";
+  } else {
+    elements.overviewHubBadge.textContent = snapshot.focusBadge;
+    elements.overviewHubBadge.className = `ops-badge ${snapshot.focusTone}`;
+    elements.overviewHubTitle.textContent = `${detail.customerLabel} 기준으로 다음 단계를 고르세요.`;
+    elements.overviewHubCopy.textContent = `${detail.siteLabel || "현장 정보"} · ${getListActionLabel(detail)}`;
+  }
+
+  setOverviewRouteCard(elements.overviewRouteCaptureBadge, elements.overviewRouteCaptureCopy, elements.overviewRouteCaptureLink, {
+    badge: hasSelectedJobCase ? `기록 ${Math.max(fieldRecordCount, 1)}건` : "시작",
+    badgeClass: hasSelectedJobCase ? "EXPLAINED" : "neutral",
+    copy: hasSelectedJobCase
+      ? "현장 기록을 다시 보거나 추가 기록을 남길 수 있습니다. 작업 범위가 바뀌면 이 단계로 돌아오면 됩니다."
+      : "현장 사진, 사유, 메모를 남기고 작업 건 연결을 시작하는 단계입니다.",
+    href: buildWorkflowRouteHref("capture", routeCaseId),
+    label: hasSelectedJobCase ? "현장 기록 다시 보기" : "현장 기록 단계로 이동"
+  });
+
+  let quoteCard;
+  if (!hasSelectedJobCase) {
+    quoteCard = {
+      badge: "작업 건 선택 후",
+      badgeClass: "neutral",
+      copy: "작업 건을 고르면 변경 금액과 범위를 정리하는 단계로 바로 이어갈 수 있습니다.",
+      href: buildWorkflowRouteHref("quote", routeCaseId),
+      label: "변경 견적 정리하러 가기"
+    };
+  } else if (!hasQuote) {
+    quoteCard = {
+      badge: "우선 정리",
+      badgeClass: "ON_HOLD",
+      copy: "변경 금액이 아직 없습니다. 지금 가장 먼저 금액과 범위를 정리하는 편이 좋습니다.",
+      href: buildWorkflowRouteHref("quote", routeCaseId),
+      label: "변경 견적 정리하러 가기"
+    };
+  } else {
+    quoteCard = {
+      badge: "정리됨",
+      badgeClass: "AGREED",
+      copy: `변경 견적 ${formatMoney(detail.revisedQuoteAmount)}이 저장돼 있습니다. 필요하면 범위 문장만 다시 확인하면 됩니다.`,
+      href: buildWorkflowRouteHref("quote", routeCaseId),
+      label: "변경 견적 다시 보기"
+    };
+  }
+  setOverviewRouteCard(elements.overviewRouteQuoteBadge, elements.overviewRouteQuoteCopy, elements.overviewRouteQuoteLink, quoteCard);
+
+  let draftCard;
+  if (!hasSelectedJobCase) {
+    draftCard = {
+      badge: "작업 건 선택 후",
+      badgeClass: "neutral",
+      copy: "작업 건을 고르면 고객 설명 문장 준비 단계로 바로 들어갈 수 있습니다.",
+      href: buildWorkflowRouteHref("draft", routeCaseId),
+      label: "고객 설명 문장 준비하기"
+    };
+  } else if (!hasQuote) {
+    draftCard = {
+      badge: "선행 필요",
+      badgeClass: "ON_HOLD",
+      copy: "먼저 변경 견적이 정리돼야 자연스러운 고객 설명 문장을 만들 수 있습니다.",
+      href: buildWorkflowRouteHref("quote", routeCaseId),
+      label: "먼저 변경 견적 보기"
+    };
+  } else if (!hasDraft) {
+    draftCard = {
+      badge: "초안 필요",
+      badgeClass: "ON_HOLD",
+      copy: "고객에게 바로 보낼 문장이 아직 없습니다. 견적 정리가 끝났으니 이제 초안을 만들 차례입니다.",
+      href: buildWorkflowRouteHref("draft", routeCaseId),
+      label: "고객 설명 문장 준비하기"
+    };
+  } else {
+    draftCard = {
+      badge: "준비됨",
+      badgeClass: "AGREED",
+      copy: "고객 설명 초안이 준비돼 있습니다. 전달 전 마지막 표현만 확인하면 됩니다.",
+      href: buildWorkflowRouteHref("draft", routeCaseId),
+      label: "설명 초안 다시 보기"
+    };
+  }
+  setOverviewRouteCard(elements.overviewRouteDraftBadge, elements.overviewRouteDraftCopy, elements.overviewRouteDraftLink, draftCard);
+
+  let confirmCard;
+  if (!hasSelectedJobCase) {
+    confirmCard = {
+      badge: "작업 건 선택 후",
+      badgeClass: "neutral",
+      copy: "작업 건을 고르면 고객 확인 링크와 합의 상태를 정리하는 마지막 단계로 들어갈 수 있습니다.",
+      href: buildWorkflowRouteHref("confirm", routeCaseId),
+      label: "확인과 합의 기록 보기"
+    };
+  } else if (terminal) {
+    confirmCard = {
+      badge: status === "AGREED" ? "완료" : "종료",
+      badgeClass: status,
+      copy: "최종 상태가 정리된 작업 건입니다. 필요하면 기록 다시 보기와 내부 공유용으로 확인하면 됩니다.",
+      href: buildWorkflowRouteHref("confirm", routeCaseId),
+      label: "최종 기록 다시 보기"
+    };
+  } else if (status === "ON_HOLD") {
+    confirmCard = {
+      badge: "보류",
+      badgeClass: "ON_HOLD",
+      copy: "현재는 답변 대기 상태입니다. 보류 사유와 마지막 메모를 최신으로 남겨두는 것이 중요합니다.",
+      href: buildWorkflowRouteHref("confirm", routeCaseId),
+      label: "보류 상태 확인하기"
+    };
+  } else if (!hasDraft) {
+    confirmCard = {
+      badge: "선행 필요",
+      badgeClass: "ON_HOLD",
+      copy: "고객 확인과 합의 단계 전에 설명 초안이 준비되면 마지막 소통이 훨씬 자연스럽습니다.",
+      href: buildWorkflowRouteHref("draft", routeCaseId),
+      label: "먼저 설명 초안 보기"
+    };
+  } else if (!hasConfirmationLink) {
+    confirmCard = {
+      badge: "마무리 필요",
+      badgeClass: "EXPLAINED",
+      copy: "설명은 끝났습니다. 고객 확인 링크를 열거나 합의 기록을 남기면 흐름을 마무리할 수 있습니다.",
+      href: buildWorkflowRouteHref("confirm", routeCaseId),
+      label: "확인과 합의 기록 보기"
+    };
+  } else {
+    confirmCard = {
+      badge: "확인 진행 중",
+      badgeClass: "EXPLAINED",
+      copy: "고객 확인 링크가 이미 발급됐습니다. 열람 여부와 합의 상태를 함께 정리하면 됩니다.",
+      href: buildWorkflowRouteHref("confirm", routeCaseId),
+      label: "확인 진행 상태 보기"
+    };
+  }
+  setOverviewRouteCard(elements.overviewRouteConfirmBadge, elements.overviewRouteConfirmCopy, elements.overviewRouteConfirmLink, confirmCard);
+}
+
 function renderOpsReturnContext(snapshot) {
   if (!elements.opsReturnCard) {
     return;
@@ -1418,6 +1612,7 @@ function renderWorkflowState() {
     elements.agreementStageNote.textContent = snapshot.agreementNote;
   }
   renderStageAction(snapshot);
+  renderOverviewHub(snapshot);
   renderWorkflowBanner(snapshot);
   renderPriorityList(snapshot.priorityItems);
   renderCaseProgress(snapshot);

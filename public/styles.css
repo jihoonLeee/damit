@@ -141,6 +141,24 @@ h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.02; letter-spacing: -0.03
   flex-wrap: wrap;
   gap: 8px;
 }
+.overview-hub-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(180, 155, 119, 0.38);
+  background:
+    linear-gradient(180deg, rgba(245, 236, 223, 0.92) 0%, rgba(255, 251, 245, 0.98) 100%),
+    linear-gradient(90deg, rgba(27, 79, 209, 0.06) 0%, transparent 30%);
+}
+.overview-route-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.overview-route-card {
+  min-height: 100%;
+}
 .workflow-banner { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
 .workspace-meta {
   display: flex;
@@ -317,6 +335,22 @@ h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.02; letter-spacing: -0.03
 .record-photos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .record-photos img { width: 84px; height: 84px; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); }
 .detail-tail-spacer { height: 16px; }
+body.workflow-screen-overview .panel-capture {
+  display: none;
+}
+body.workflow-screen-overview .workspace {
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+}
+body.workflow-screen-overview #stage-action-card,
+body.workflow-screen-overview #detail-jump,
+body.workflow-screen-overview #quote-card,
+body.workflow-screen-overview #draft-card,
+body.workflow-screen-overview #customer-confirm-card,
+body.workflow-screen-overview #agreement-card,
+body.workflow-screen-overview #records-card,
+body.workflow-screen-overview #timeline-card {
+  display: none;
+}
 body.workflow-screen-capture .panel-list,
 body.workflow-screen-capture .panel-detail {
   display: none;
@@ -375,6 +409,15 @@ body.workflow-screen-confirm #timeline-card {
   body.workflow-screen-confirm .workspace {
     grid-template-columns: 1fr;
   }
+  body.workflow-screen-overview .workspace {
+    grid-template-columns: 1fr;
+  }
+  body.workflow-screen-overview .panel-detail {
+    order: 1;
+  }
+  body.workflow-screen-overview .panel-list {
+    order: 2;
+  }
 }
 @media (max-width: 720px) {
   .page-shell { padding: 20px 14px 28px; }
@@ -389,6 +432,9 @@ body.workflow-screen-confirm #timeline-card {
   .panel { padding: 18px; border-radius: 22px; }
   .hero-card { width: 100%; max-width: none; min-width: 0; }
   .card-grid, .scope-grid, .two-column, .inline-form { grid-template-columns: 1fr; display: grid; }
+  .overview-route-grid {
+    grid-template-columns: 1fr;
+  }
   .panel-detail { scroll-margin-top: 12px; padding-bottom: 40px; }
   .detail-tail-spacer { height: 240px; }
   .job-card, .record-card, .timeline-item, .status-strip, .context-card, .card { padding: 14px; }
@@ -508,6 +554,8 @@ body.review-agreement .detail-tail-spacer {
 
 body.review-detail #case-focus-card,
 body.review-detail #stage-action-card,
+body.review-detail #overview-hub-card,
+body.review-detail #overview-route-grid,
 body.review-detail #case-progress-card,
 body.review-detail #ops-return-card,
 body.review-detail #detail-summary {
@@ -525,6 +573,8 @@ body.review-detail #timeline-card {
 
 body.review-ops-return #case-focus-card,
 body.review-ops-return #stage-action-card,
+body.review-ops-return #overview-hub-card,
+body.review-ops-return #overview-route-grid,
 body.review-ops-return #case-progress-card,
 body.review-ops-return #detail-summary,
 body.review-ops-return #quote-card,
@@ -539,6 +589,8 @@ body.review-ops-return #timeline-card {
 body.review-agreement #detail-summary,
 body.review-agreement #case-focus-card,
 body.review-agreement #stage-action-card,
+body.review-agreement #overview-hub-card,
+body.review-agreement #overview-route-grid,
 body.review-agreement #case-progress-card,
 body.review-agreement #quote-card,
 body.review-agreement #draft-card,
@@ -551,6 +603,8 @@ body.review-agreement #timeline-card {
 body.review-copy #detail-summary,
 body.review-copy #case-focus-card,
 body.review-copy #stage-action-card,
+body.review-copy #overview-hub-card,
+body.review-copy #overview-route-grid,
 body.review-copy #case-progress-card,
 body.review-copy #quote-card,
 body.review-copy #agreement-card,
@@ -2545,6 +2599,7 @@ body.review-detail .card {
 .workspace-priority-item,
 .case-focus-card,
 .stage-action-card,
+.overview-hub-card,
 .confirm-state-banner,
 .auth-journey-step {
   border-radius: 0;
@@ -2687,6 +2742,7 @@ body.review-detail .card {
 .workspace-signal-card strong,
 .case-focus-card strong,
 .stage-action-card strong,
+.overview-hub-card strong,
 .metric-card strong,
 .ops-card strong,
 .home-route-card strong,

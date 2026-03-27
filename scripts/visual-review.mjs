@@ -165,6 +165,16 @@ async function main() {
     });
 
     await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app"),
+      width: 390,
+      height: 1280,
+      outputPath: path.join(outputDir, "mobile-app-overview-hub.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
       url: buildAuthenticatedReviewUrl(baseUrl, "/app/quote?caseId=jc_demo_3"),
       width: 390,
       height: 1180,
