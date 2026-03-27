@@ -54,6 +54,8 @@
 - auth verify public rate limit default is `12 / 10 minutes / IP`
 - customer confirmation read public rate limit default is `30 / 10 minutes / IP`
 - customer confirmation acknowledge public rate limit default is `6 / 10 minutes / IP`
+- invitation create rate limit default is `8 / 10 minutes / owner-company`
+- invitation reissue rate limit default is `12 / 10 minutes / owner-company`
 
 ## Public abuse hardening check
 
@@ -61,6 +63,13 @@
 2. hit `/api/v1/public/confirm/:token` repeatedly from the same IP and confirm `429`
 3. confirm `Retry-After` is present on rate-limited responses
 4. keep real mail cutover disabled until sender-domain verification is complete
+
+## Invitation abuse hardening check
+
+1. create several invitations from the same owner/company in a short window and confirm `429`
+2. reissue several invitations from the same owner/company in a short window and confirm `429`
+3. confirm `Retry-After` is present on invitation create/reissue throttles
+4. keep the repository-level per-email and per-invitation cooldown behavior intact
 
 ## Staging checks
 
@@ -152,6 +161,14 @@ Expected local result:
 3. confirm debug login link exposure is OFF before real-mail cutover
 4. confirm trusted-origin enforcement is ON before real-mail cutover
 5. if MAIL_PROVIDER=RESEND, confirm both MAIL_FROM and RESEND_API_KEY are shown as configured
+
+## Sentry enablement
+
+1. set `SENTRY_DSN`
+2. optionally set `SENTRY_ENVIRONMENT` and `SENTRY_RELEASE`
+3. redeploy the app
+4. confirm `/ops` no longer shows the monitoring-disabled warning
+5. keep Sentry optional in local development by leaving `SENTRY_DSN` empty
 
 ## Local real mail smoke
 

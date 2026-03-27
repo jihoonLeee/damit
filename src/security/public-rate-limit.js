@@ -27,7 +27,8 @@ export function resetPublicRateLimitState() {
   lastPrunedAt = 0;
 }
 
-export function assertPublicRateLimit({
+function assertRateLimit({
+  scope,
   key,
   identifier,
   limit,
@@ -44,7 +45,7 @@ export function assertPublicRateLimit({
   const now = Date.now();
   pruneBuckets(now);
 
-  const bucketKey = `${key}:${normalizeIdentifier(identifier)}`;
+  const bucketKey = `${scope || "default"}:${key}:${normalizeIdentifier(identifier)}`;
   let entry = buckets.get(bucketKey);
   if (!entry || entry.resetAt <= now) {
     entry = {
@@ -68,4 +69,18 @@ export function assertPublicRateLimit({
 
   entry.count += 1;
   buckets.set(bucketKey, entry);
+}
+
+export function assertPublicRateLimit(options) {
+  assertRateLimit({
+    scope: "public",
+    ...options
+  });
+}
+
+export function assertActionRateLimit(options) {
+  assertRateLimit({
+    scope: "action",
+    ...options
+  });
 }

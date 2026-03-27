@@ -1,4 +1,6 @@
-﻿import crypto from "node:crypto";
+import crypto from "node:crypto";
+
+import { captureServerError } from "./observability/sentry.js";
 
 export class HttpError extends Error {
   constructor(status, code, message, fieldErrors, headers) {
@@ -88,7 +90,7 @@ export function createRequestId() {
   return `req_${crypto.randomBytes(6).toString("hex")}`;
 }
 
-export function sendError(response, requestId, error) {
+export function sendError(response, requestId, error, request = null) {
   const status = error instanceof HttpError ? error.status : 500;
   const code = error instanceof HttpError ? error.code : "INTERNAL_ERROR";
   const message = error instanceof HttpError ? error.message : "잠시 후 다시 시도해주세요";
@@ -102,6 +104,16 @@ export function sendError(response, requestId, error) {
 
   if (error instanceof HttpError && error.fieldErrors) {
     payload.error.fieldErrors = error.fieldErrors;
+  }
+
+  if (!(error instanceof HttpError) || status >= 500) {
+    captureServerError(error, {
+      channel: "http",
+      requestId,
+      status,
+      code,
+      request
+    });
   }
 
   const extraHeaders = error instanceof HttpError && error.headers ? error.headers : {};

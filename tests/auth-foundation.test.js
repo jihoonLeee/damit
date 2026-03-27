@@ -563,6 +563,158 @@ test("owner can reissue and revoke invitations from the same company", async () 
   assert.equal(inviteListAfterRevoke.items[0].status, "REVOKED");
 });
 
+test("invitation create is rate limited by owner-company scope", async () => {
+  const previousCount = config.invitationCreateRateLimitCount;
+  const previousWindow = config.invitationCreateRateLimitWindowSeconds;
+  config.invitationCreateRateLimitCount = 2;
+  config.invitationCreateRateLimitWindowSeconds = 600;
+
+  try {
+    const ownerChallenge = await issueChallenge("invite-limit-owner@example.com");
+    const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {
+      displayName: "초대 제한 오너",
+      companyName: "초대 제한 업체"
+    });
+    const ownerCookie = readCookiesFromResponse(ownerVerify.response);
+    const ownerCsrf = getCookieValue(ownerCookie, config.csrfCookieName);
+    const companyId = ownerVerify.payload.company.id;
+
+    const firstInvite = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      },
+      body: JSON.stringify({
+        email: "crew-limit-1@example.com",
+        role: "STAFF"
+      })
+    });
+    const secondInvite = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      },
+      body: JSON.stringify({
+        email: "crew-limit-2@example.com",
+        role: "STAFF"
+      })
+    });
+    const thirdInvite = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      },
+      body: JSON.stringify({
+        email: "crew-limit-3@example.com",
+        role: "STAFF"
+      })
+    });
+
+    assert.equal(firstInvite.status, 201);
+    assert.equal(secondInvite.status, 201);
+    assert.equal(thirdInvite.status, 429);
+    const thirdPayload = await thirdInvite.json();
+    assert.equal(thirdPayload.error.code, "INVITATION_CREATE_RATE_LIMITED");
+    assert.equal(thirdInvite.headers.get("retry-after"), "600");
+  } finally {
+    config.invitationCreateRateLimitCount = previousCount;
+    config.invitationCreateRateLimitWindowSeconds = previousWindow;
+  }
+});
+
+test("invitation reissue is rate limited by owner-company scope", async () => {
+  const previousCount = config.invitationReissueRateLimitCount;
+  const previousWindow = config.invitationReissueRateLimitWindowSeconds;
+  config.invitationReissueRateLimitCount = 1;
+  config.invitationReissueRateLimitWindowSeconds = 600;
+
+  try {
+    const ownerChallenge = await issueChallenge("reissue-limit-owner@example.com");
+    const ownerVerify = await verifyViaLink(ownerChallenge.payload.debugMagicLink, {
+      displayName: "재전송 제한 오너",
+      companyName: "재전송 제한 업체"
+    });
+    const ownerCookie = readCookiesFromResponse(ownerVerify.response);
+    const ownerCsrf = getCookieValue(ownerCookie, config.csrfCookieName);
+    const companyId = ownerVerify.payload.company.id;
+
+    const firstInviteResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      },
+      body: JSON.stringify({
+        email: "crew-reissue-1@example.com",
+        role: "STAFF"
+      })
+    });
+    assert.equal(firstInviteResponse.status, 201);
+
+    const firstListResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+      headers: {
+        Cookie: ownerCookie
+      }
+    });
+    const firstListPayload = await firstListResponse.json();
+    backdateInvitation(firstListPayload.items[0].id);
+
+    const firstReissueResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations/${firstListPayload.items[0].id}/reissue`, {
+      method: "POST",
+      headers: {
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      }
+    });
+    assert.equal(firstReissueResponse.status, 200);
+
+    const secondInviteResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      },
+      body: JSON.stringify({
+        email: "crew-reissue-2@example.com",
+        role: "STAFF"
+      })
+    });
+    assert.equal(secondInviteResponse.status, 201);
+
+    const secondListResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations`, {
+      headers: {
+        Cookie: ownerCookie
+      }
+    });
+    const secondListPayload = await secondListResponse.json();
+    const activeIssuedInvitation = secondListPayload.items.find((item) => item.status === "ISSUED");
+    backdateInvitation(activeIssuedInvitation.id);
+
+    const secondReissueResponse = await fetch(`${baseUrl}/api/v1/companies/${companyId}/invitations/${activeIssuedInvitation.id}/reissue`, {
+      method: "POST",
+      headers: {
+        Cookie: ownerCookie,
+        "x-csrf-token": ownerCsrf
+      }
+    });
+    assert.equal(secondReissueResponse.status, 429);
+    const secondReissuePayload = await secondReissueResponse.json();
+    assert.equal(secondReissuePayload.error.code, "INVITATION_REISSUE_RATE_LIMITED");
+    assert.equal(secondReissueResponse.headers.get("retry-after"), "600");
+  } finally {
+    config.invitationReissueRateLimitCount = previousCount;
+    config.invitationReissueRateLimitWindowSeconds = previousWindow;
+  }
+});
+
 test("system admin overview requires allowlisted email and returns global snapshot when authorized", async () => {
   const previousEmails = [...config.systemAdminEmails];
   try {

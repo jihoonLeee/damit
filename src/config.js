@@ -46,6 +46,9 @@ export const config = {
   mailProvider: process.env.MAIL_PROVIDER || "",
   mailFrom: process.env.MAIL_FROM || "login@damit.local",
   resendApiKey: process.env.RESEND_API_KEY || "",
+  sentryDsn: process.env.SENTRY_DSN || "",
+  sentryEnvironment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || "development",
+  sentryRelease: process.env.SENTRY_RELEASE || "",
   nodeEnv,
   objectStorageProvider: process.env.OBJECT_STORAGE_PROVIDER || "LOCAL_VOLUME",
   objectStorageBucket: process.env.OBJECT_STORAGE_BUCKET || "",
@@ -68,6 +71,10 @@ export const config = {
   publicConfirmViewRateLimitWindowSeconds: readInteger(process.env.PUBLIC_CONFIRM_VIEW_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
   publicConfirmAckRateLimitCount: readInteger(process.env.PUBLIC_CONFIRM_ACK_RATE_LIMIT_COUNT, 6),
   publicConfirmAckRateLimitWindowSeconds: readInteger(process.env.PUBLIC_CONFIRM_ACK_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
+  invitationCreateRateLimitCount: readInteger(process.env.INVITATION_CREATE_RATE_LIMIT_COUNT, 8),
+  invitationCreateRateLimitWindowSeconds: readInteger(process.env.INVITATION_CREATE_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
+  invitationReissueRateLimitCount: readInteger(process.env.INVITATION_REISSUE_RATE_LIMIT_COUNT, 12),
+  invitationReissueRateLimitWindowSeconds: readInteger(process.env.INVITATION_REISSUE_RATE_LIMIT_WINDOW_SECONDS, 10 * 60),
   systemAdminEmails: readList(process.env.SYSTEM_ADMIN_EMAILS),
   ownerId: process.env.OWNER_ID || "system_owner"
 };

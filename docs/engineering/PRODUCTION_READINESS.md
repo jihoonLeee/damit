@@ -166,6 +166,13 @@ Keep append-only traces for:
 - this closes one of the biggest previously unproven public-abuse gaps
 - public production still remains `HOLD` until mail cutover, broader monitoring, and stronger recovery evidence are also complete
 
+## Latest PM Sentry/invitation hardening note
+
+- unexpected `5xx` runtime paths can now report to Sentry when `SENTRY_DSN` is configured
+- Sentry stays optional and no-op when the DSN is absent
+- owner/company invitation create and reissue flows now have explicit action-level throttles with `429` and `Retry-After`
+- this materially improves public-operational hardening, but live production maturity still remains `HOLD` until real monitoring configuration and mail cutover are both proven
+
 
 ## Latest PM ops readiness note
 

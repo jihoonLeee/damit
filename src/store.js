@@ -1092,6 +1092,7 @@ function buildOpsRuntimeReadiness() {
   const trustedOrigins = parseTrustedOrigins(config.trustedOrigins);
   const mailFromConfigured = Boolean(String(config.mailFrom || "").trim());
   const resendConfigured = Boolean(String(config.resendApiKey || "").trim());
+  const sentryConfigured = Boolean(String(config.sentryDsn || "").trim());
   const appBaseUrlConfigured = Boolean(String(config.appBaseUrl || "").trim());
   const authDebugLinks = Boolean(config.authDebugLinks);
   const authEnforceTrustedOrigin = Boolean(config.authEnforceTrustedOrigin);
@@ -1114,6 +1115,8 @@ function buildOpsRuntimeReadiness() {
     mailProvider,
     mailFromConfigured,
     resendConfigured,
+    sentryConfigured,
+    sentryEnvironment: config.sentryEnvironment || config.nodeEnv,
     authDebugLinks,
     authEnforceTrustedOrigin,
     trustedOriginCount: trustedOrigins.length,

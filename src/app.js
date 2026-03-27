@@ -36,7 +36,7 @@ import { sendInvitationEmail, sendMagicLinkEmail } from "./mail-gateway.js";
 import { createRepositoryBundle } from "./repositories/createRepositoryBundle.js";
 import { normalizePathname, serveStaticRequest } from "./http/static-routes.js";
 import { handleSystemApiRequest } from "./http/system-routes.js";
-import { assertPublicRateLimit } from "./security/public-rate-limit.js";
+import { assertActionRateLimit, assertPublicRateLimit } from "./security/public-rate-limit.js";
 
 async function ensureOperationalSchemas(repositories) {
   if (repositories.engine !== "SQLITE") {
@@ -72,7 +72,7 @@ export function createApp() {
 
         await serveStaticRequest(pathname, response);
       } catch (error) {
-        sendError(response, requestId, error);
+        sendError(response, requestId, error, request);
       }
     }
   };
@@ -542,6 +542,14 @@ async function handleApiRequest(request, response, repositories) {
       assertRole(authContext, ["OWNER"]);
 
       if (action === "reissue") {
+        assertActionRateLimit({
+          key: "company-invitation-reissue",
+          identifier: `${companyId}:${authContext.userId}`,
+          limit: config.invitationReissueRateLimitCount,
+          windowSeconds: config.invitationReissueRateLimitWindowSeconds,
+          code: "INVITATION_REISSUE_RATE_LIMITED",
+          message: "팀 초대 재전송 요청이 너무 많아요. 잠시 후 다시 시도해 주세요."
+        });
         const invitation = await repositories.authRepository.reissueInvitation({
           companyId,
           invitationId,
@@ -611,38 +619,46 @@ async function handleApiRequest(request, response, repositories) {
       assertTrustedOrigin(request);
       assertCsrf(request);
       const companyId = invitationsMatch[1];
-    const authContext = await requireSessionContext(request, repositories);
-    assertActiveCompanyMatch(authContext, companyId);
-    assertRole(authContext, ["OWNER"]);
-    const payload = await readJsonBody(request);
-    const invitation = await repositories.authRepository.createInvitation({
-      companyId,
-      email: payload.email,
-      role: payload.role,
-      invitedByUserId: authContext.userId
-    });
-    const delivery = await sendInvitationEmail({
-      request,
-      email: invitation.email,
-      role: invitation.role,
-      companyName: invitation.companyName,
-      invitationToken: invitation.invitationToken
-    });
-    jsonNoStore(response, 201, {
-      id: invitation.id,
-      email: invitation.email,
-      role: invitation.role,
-      expiresAt: invitation.expiresAt,
-      delivery: {
-        provider: delivery.provider,
-        status: delivery.status,
-        targetMasked: delivery.targetMasked || null
-      },
-      ...(delivery.previewPath ? { previewPath: delivery.previewPath } : {}),
-      ...(delivery.debugInvitationLink ? { debugInvitationLink: delivery.debugInvitationLink } : {})
-    });
-    return;
-  }
+      const authContext = await requireSessionContext(request, repositories);
+      assertActiveCompanyMatch(authContext, companyId);
+      assertRole(authContext, ["OWNER"]);
+      assertActionRateLimit({
+        key: "company-invitation-create",
+        identifier: `${companyId}:${authContext.userId}`,
+        limit: config.invitationCreateRateLimitCount,
+        windowSeconds: config.invitationCreateRateLimitWindowSeconds,
+        code: "INVITATION_CREATE_RATE_LIMITED",
+        message: "팀 초대 요청이 너무 많아요. 잠시 후 다시 시도해 주세요."
+      });
+      const payload = await readJsonBody(request);
+      const invitation = await repositories.authRepository.createInvitation({
+        companyId,
+        email: payload.email,
+        role: payload.role,
+        invitedByUserId: authContext.userId
+      });
+      const delivery = await sendInvitationEmail({
+        request,
+        email: invitation.email,
+        role: invitation.role,
+        companyName: invitation.companyName,
+        invitationToken: invitation.invitationToken
+      });
+      jsonNoStore(response, 201, {
+        id: invitation.id,
+        email: invitation.email,
+        role: invitation.role,
+        expiresAt: invitation.expiresAt,
+        delivery: {
+          provider: delivery.provider,
+          status: delivery.status,
+          targetMasked: delivery.targetMasked || null
+        },
+        ...(delivery.previewPath ? { previewPath: delivery.previewPath } : {}),
+        ...(delivery.debugInvitationLink ? { debugInvitationLink: delivery.debugInvitationLink } : {})
+      });
+      return;
+    }
 
   if (request.method === "POST" && pathname === "/api/v1/field-records") {
     const businessContext = await requireBusinessContext(request, repositories, { write: true });

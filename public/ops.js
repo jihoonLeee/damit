@@ -640,6 +640,14 @@ function deriveAlerts(health, snapshot) {
     });
   }
 
+  if (!snapshot.runtime?.sentryConfigured) {
+    alerts.push({
+      tone: "warning",
+      title: "장애 모니터링이 아직 비활성 상태입니다",
+      body: "예상치 못한 5xx를 빠르게 잡으려면 SENTRY_DSN을 넣고 런타임 오류 수집을 켜 두는 편이 좋습니다."
+    });
+  }
+
   if (!snapshot.runtime?.authEnforceTrustedOrigin) {
     alerts.push({
       tone: "warning",
@@ -1021,6 +1029,7 @@ function renderSnapshotDetails(snapshot) {
     ["로그인 전달 모드", formatAuthDeliveryMode(snapshot.runtime?.authDeliveryMode)],
     ["메일 발신 주소", snapshot.runtime?.mailFromConfigured ? "설정됨" : "미설정"],
     ["Resend API", snapshot.runtime?.resendConfigured ? "설정됨" : "미설정"],
+    ["Sentry", snapshot.runtime?.sentryConfigured ? "설정됨" : "미설정"],
     ["디버그 로그인 링크", formatEnabledState(snapshot.runtime?.authDebugLinks)],
     ["신뢰 출처 검사", formatEnabledState(snapshot.runtime?.authEnforceTrustedOrigin)],
     ["추가 허용 출처", snapshot.runtime?.trustedOriginCount ? `${formatCount(snapshot.runtime?.trustedOriginCount)}개` : "없음"],
