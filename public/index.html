@@ -15,9 +15,9 @@
           <img class="brand-lockup-mark compact" src="/logos/damit_icon_exact.svg" alt="" aria-hidden="true" />
           <img class="brand-lockup-wordmark compact" src="/logos/damit_wordmark_exact.svg" alt="DAMIT 로고" />
         </div>
-        <p class="eyebrow">DAMIT WORKSPACE</p>
-        <h1>다밋 운영 워크스페이스</h1>
-        <p class="hero-copy">
+        <p class="eyebrow" id="app-hero-eyebrow">DAMIT WORKSPACE</p>
+        <h1 id="app-hero-title">다밋 운영 워크스페이스</h1>
+        <p class="hero-copy" id="app-hero-copy">
           현장 기록, 작업 건 연결, 변경 견적, 설명 초안, 고객 확인, 합의 기록을 한 화면에서 이어서 관리합니다.
           기록이 먼저 남고 설명이 따라오도록 구성해, 현장 이후 후속 커뮤니케이션을 빠르게 마무리할 수 있습니다.
         </p>
@@ -31,6 +31,19 @@
         </ul>
       </aside>
     </header>
+
+    <section class="workflow-route-nav" aria-label="작업 단계 화면 이동">
+      <a id="workflow-route-overview" class="workflow-route-chip" href="/app">전체 보기</a>
+      <a id="workflow-route-capture" class="workflow-route-chip" href="/app/capture">현장 기록</a>
+      <a id="workflow-route-quote" class="workflow-route-chip" href="/app/quote">변경 견적</a>
+      <a id="workflow-route-draft" class="workflow-route-chip" href="/app/draft">설명 초안</a>
+      <a id="workflow-route-confirm" class="workflow-route-chip" href="/app/confirm">확인과 합의</a>
+    </section>
+
+    <section class="workflow-screen-note" aria-label="현재 화면 안내">
+      <strong id="app-screen-note-title">전체 작업 화면</strong>
+      <p id="app-screen-note-copy">기존 전체 워크스페이스입니다. 단계별 화면이 필요하면 위 경로에서 각 단계를 따로 열 수 있습니다.</p>
+    </section>
 
     <section class="workflow-banner" aria-label="운영 흐름">
       <div class="flow-chip active" data-step="capture">1. 현장 기록</div>

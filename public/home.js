@@ -77,7 +77,7 @@ function createActionItems(company, role) {
       {
         tone: "is-active",
         title: "작업 워크스페이스로 들어가 현재 작업 건을 이어서 처리하세요",
-        body: "현장 기록 연결, 변경 견적, 고객 확인 링크, 합의 기록은 `/app`에서 계속 진행합니다."
+        body: "현장 기록 연결은 /app/capture, 견적은 /app/quote, 최종 확인은 /app/confirm에서 단계별로 이어서 처리합니다."
       },
       {
         tone: "is-good",
@@ -136,37 +136,37 @@ function getRecommendedRoute(company, role) {
 
   if (role === "OWNER") {
     return {
-      primaryPath: "/app",
+      primaryPath: "/app/capture",
       primaryLabel: "작업 워크스페이스",
       primaryButtonLabel: "작업 워크스페이스 열기",
       secondaryPath: "/ops",
       secondaryLabel: "운영 콘솔 보기",
       title: "먼저 작업 워크스페이스로 이동해 현재 작업 건을 확인하세요",
-      copy: "실제 업무 처리는 /app에서, 운영 점검과 백업 확인은 /ops에서 나누어 보는 편이 가장 직관적입니다.",
-      routeSummary: `${company.name}에서는 /app을 먼저 열고, 운영 점검이 필요할 때 /ops로 넘어가면 됩니다.`,
+      copy: "실제 업무는 /app/capture부터 시작하고, 이후 견적·초안·합의 단계로 나눠 보는 편이 가장 직관적입니다. 운영 점검과 백업 확인은 /ops에서 따로 봅니다.",
+      routeSummary: `${company.name}에서는 /app/capture를 먼저 열고, 단계별 작업을 이어간 뒤 운영 점검이 필요할 때 /ops로 넘어가면 됩니다.`,
       switchNote: "회사 전환 후 이미 열려 있던 /app 또는 /ops 탭이 있다면 한 번 새로고침하면 새 컨텍스트로 이어집니다."
     };
   }
 
   if (role === "MANAGER") {
     return {
-      primaryPath: "/app",
+      primaryPath: "/app/capture",
       primaryLabel: "작업 워크스페이스",
       primaryButtonLabel: "작업 워크스페이스 열기",
       title: "견적과 합의가 필요한 작업 건부터 이어서 처리하세요",
-      copy: "현재 권한에서는 /app이 주 작업 화면입니다. 운영 콘솔은 OWNER 중심 점검 화면으로 보면 됩니다.",
-      routeSummary: `${company.name}에서는 /app이 주 작업 화면입니다. 운영 점검은 OWNER와 함께 확인하는 편이 좋습니다.`,
+      copy: "현재 권한에서는 /app/capture부터 시작하는 단계형 작업 화면이 주 동선입니다. 운영 콘솔은 OWNER 중심 점검 화면으로 보면 됩니다.",
+      routeSummary: `${company.name}에서는 /app/capture부터 시작하는 작업 화면이 주 경로입니다. 운영 점검은 OWNER와 함께 확인하는 편이 좋습니다.`,
       switchNote: "회사 전환 후에는 현장 기록, 견적, 합의 흐름이 새 회사 기준으로 보이므로 기존 탭을 새로고침해 주세요."
     };
   }
 
   return {
-    primaryPath: "/app",
+      primaryPath: "/app/capture",
     primaryLabel: "작업 워크스페이스",
     primaryButtonLabel: "작업 워크스페이스 열기",
     title: "배정된 현장 작업과 기록 상태를 먼저 확인하세요",
-    copy: "현재 권한에서는 /app이 주 작업 화면입니다. 현장 기록과 연결된 작업 건을 먼저 확인하면 됩니다.",
-    routeSummary: `${company.name}에서는 /app에서 현장 기록과 작업 건을 확인하는 흐름이 우선입니다.`,
+    copy: "현재 권한에서는 /app/capture부터 시작하는 작업 화면이 주 동선입니다. 현장 기록과 연결된 작업 건을 먼저 확인하면 됩니다.",
+    routeSummary: `${company.name}에서는 /app/capture에서 현장 기록과 작업 건을 먼저 확인하는 흐름이 우선입니다.`,
     switchNote: "회사 전환 후에는 내가 볼 수 있는 작업 건과 현장 기록 범위가 달라질 수 있으니 새로고침을 권장합니다."
   };
 }
@@ -316,7 +316,7 @@ function renderWorkflowGuidance() {
     footerWorkspaceLink.href = route.primaryPath;
   }
   if (workspaceRouteCard) {
-    workspaceRouteCard.classList.toggle("is-primary-route", route.primaryPath === "/app");
+    workspaceRouteCard.classList.toggle("is-primary-route", route.primaryPath.startsWith("/app"));
   }
   if (workspaceRouteBadge) {
     workspaceRouteBadge.textContent = company

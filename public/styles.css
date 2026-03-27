@@ -61,6 +61,48 @@ h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.02; letter-spacing: -0.03
 .hero-card { min-width: 280px; max-width: 320px; padding: 18px 20px; border-radius: 20px; background: linear-gradient(180deg, rgba(244, 234, 220, 0.95) 0%, rgba(255, 253, 248, 0.98) 18px, rgba(255, 253, 248, 0.98) 100%); border: 1px solid rgba(180, 155, 119, 0.5); box-shadow: var(--shadow); }
 .hero-card h2 { font-size: 16px; margin-bottom: 10px; }
 .hero-card ul { padding-left: 18px; margin: 0; color: var(--muted); display: grid; gap: 8px; }
+.workflow-route-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.workflow-route-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 252, 245, 0.86);
+  border: 1px solid rgba(180, 155, 119, 0.4);
+  color: var(--primary-strong);
+  font-family: "Space Grotesk", "Consolas", monospace;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.workflow-route-chip.is-active {
+  background: rgba(27, 79, 209, 0.14);
+  border-color: rgba(27, 79, 209, 0.24);
+  color: var(--primary-strong);
+}
+.workflow-screen-note {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(245, 236, 223, 0.92) 0%, rgba(255, 253, 248, 0.96) 100%);
+  border: 1px solid rgba(180, 155, 119, 0.34);
+}
+.workflow-screen-note strong {
+  font-size: 16px;
+}
+.workflow-screen-note p {
+  color: var(--muted);
+  line-height: 1.5;
+}
 .workflow-banner { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
 .workspace-meta {
   display: flex;
@@ -237,15 +279,68 @@ h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.02; letter-spacing: -0.03
 .record-photos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .record-photos img { width: 84px; height: 84px; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); }
 .detail-tail-spacer { height: 16px; }
+body.workflow-screen-capture .panel-list,
+body.workflow-screen-capture .panel-detail {
+  display: none;
+}
+body.workflow-screen-capture .workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+body.workflow-screen-quote .panel-capture,
+body.workflow-screen-draft .panel-capture,
+body.workflow-screen-confirm .panel-capture {
+  display: none;
+}
+body.workflow-screen-quote .workspace,
+body.workflow-screen-draft .workspace,
+body.workflow-screen-confirm .workspace {
+  grid-template-columns: minmax(320px, 0.78fr) minmax(0, 1.22fr);
+}
+body.workflow-screen-quote #detail-jump,
+body.workflow-screen-draft #detail-jump,
+body.workflow-screen-confirm #detail-jump {
+  display: none;
+}
+body.workflow-screen-quote #draft-card,
+body.workflow-screen-quote #customer-confirm-card,
+body.workflow-screen-quote #agreement-card,
+body.workflow-screen-quote #records-card,
+body.workflow-screen-quote #timeline-card,
+body.workflow-screen-draft #customer-confirm-card,
+body.workflow-screen-draft #agreement-card,
+body.workflow-screen-draft #records-card,
+body.workflow-screen-draft #timeline-card,
+body.workflow-screen-confirm #draft-card,
+body.workflow-screen-confirm #records-card {
+  display: none;
+}
+body.workflow-screen-quote #quote-card,
+body.workflow-screen-draft #draft-card,
+body.workflow-screen-confirm #customer-confirm-card,
+body.workflow-screen-confirm #agreement-card,
+body.workflow-screen-confirm #timeline-card {
+  scroll-margin-top: 16px;
+}
 @media (max-width: 1280px) {
   .workspace { grid-template-columns: 1fr; }
   .hero { flex-direction: column; }
   .panel-capture { order: 1; }
   .panel-detail { order: 2; }
   .panel-list { order: 3; }
+  body.workflow-screen-quote .workspace,
+  body.workflow-screen-draft .workspace,
+  body.workflow-screen-confirm .workspace {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 720px) {
   .page-shell { padding: 20px 14px 28px; }
+  .workflow-route-nav {
+    gap: 8px;
+  }
+  .workflow-route-chip {
+    flex: 1 1 calc(50% - 8px);
+  }
   .workspace-meta { align-items: start; }
   .workspace-tip { width: 100%; }
   .panel { padding: 18px; border-radius: 22px; }
@@ -274,6 +369,8 @@ h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.02; letter-spacing: -0.03
   }
 }
 body.review-detail .hero,
+body.review-detail .workflow-route-nav,
+body.review-detail .workflow-screen-note,
 body.review-detail .workflow-banner,
 body.review-detail .workspace-meta,
 body.review-detail .workspace-signal-board,
@@ -281,6 +378,8 @@ body.review-detail .workspace-priority-strip,
 body.review-detail .panel-capture,
 body.review-detail .panel-list,
 body.review-ops-return .hero,
+body.review-ops-return .workflow-route-nav,
+body.review-ops-return .workflow-screen-note,
 body.review-ops-return .workflow-banner,
 body.review-ops-return .workspace-meta,
 body.review-ops-return .workspace-signal-board,
@@ -288,6 +387,8 @@ body.review-ops-return .workspace-priority-strip,
 body.review-ops-return .panel-capture,
 body.review-ops-return .panel-list,
 body.review-agreement .hero,
+body.review-agreement .workflow-route-nav,
+body.review-agreement .workflow-screen-note,
 body.review-agreement .workflow-banner,
 body.review-agreement .workspace-meta,
 body.review-agreement .workspace-signal-board,
@@ -295,6 +396,8 @@ body.review-agreement .workspace-priority-strip,
 body.review-agreement .panel-capture,
 body.review-agreement .panel-list,
 body.review-copy .hero,
+body.review-copy .workflow-route-nav,
+body.review-copy .workflow-screen-note,
 body.review-copy .workflow-banner,
 body.review-copy .workspace-meta,
 body.review-copy .workspace-signal-board,

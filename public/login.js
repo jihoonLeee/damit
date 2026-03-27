@@ -37,6 +37,26 @@ function getNextDestination(pathname = "/home") {
         label: "작업 워크스페이스",
         copy: "로그인 후 작업 워크스페이스로 돌아가 현재 작업 건을 바로 이어서 처리합니다."
       };
+    case "/app/capture":
+      return {
+        label: "현장 기록 단계",
+        copy: "로그인 후 현장 기록과 작업 건 연결 단계로 돌아가 intake 흐름을 이어서 처리합니다."
+      };
+    case "/app/quote":
+      return {
+        label: "변경 견적 단계",
+        copy: "로그인 후 변경 견적과 범위 정리 단계로 돌아가 현재 작업 건을 이어서 처리합니다."
+      };
+    case "/app/draft":
+      return {
+        label: "설명 초안 단계",
+        copy: "로그인 후 고객 설명 초안 준비 단계로 돌아가 현재 작업 건을 이어서 처리합니다."
+      };
+    case "/app/confirm":
+      return {
+        label: "확인과 합의 단계",
+        copy: "로그인 후 고객 확인과 합의 기록 단계로 돌아가 현재 작업 건을 이어서 처리합니다."
+      };
     case "/ops":
       return {
         label: "운영 콘솔",

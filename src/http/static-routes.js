@@ -26,6 +26,10 @@ const publicRouteMap = new Map([
   ["/home", "home.html"],
   ["/account", "account.html"],
   ["/app", "index.html"],
+  ["/app/capture", "index.html"],
+  ["/app/quote", "index.html"],
+  ["/app/draft", "index.html"],
+  ["/app/confirm", "index.html"],
   ["/ops", "ops.html"],
   ["/admin", "admin.html"]
 ]);

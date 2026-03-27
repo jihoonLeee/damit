@@ -183,7 +183,7 @@ async function request(url, options = {}, allowRetry = true) {
       }
     }
     if (code === "OPS_OWNER_REQUIRED" || code === "COMPANY_ROLE_FORBIDDEN") {
-      window.location.href = "/home?reason=owner-required&next=/app";
+      window.location.href = "/home?reason=owner-required&next=/app/capture";
     }
     throw new Error(payload?.error?.message || "요청을 처리하지 못했습니다.");
   }
@@ -328,6 +328,29 @@ function getDatasetDescription(key, fallback) {
   return DATASET_META[key]?.description || fallback || "핵심 운영 데이터를 읽기 전용으로 확인합니다.";
 }
 
+function resolveAppStagePath(reasonKey = "", targetId = "") {
+  if (targetId === "quote-card" || reasonKey === "quote-missing") {
+    return "/app/quote";
+  }
+  if (targetId === "draft-card" || reasonKey === "draft-missing") {
+    return "/app/draft";
+  }
+  if (
+    targetId === "customer-confirm-card"
+    || targetId === "agreement-card"
+    || targetId === "timeline-card"
+    || reasonKey === "confirmation-viewed"
+    || reasonKey === "confirmation-stale"
+    || reasonKey === "confirm-link-needed"
+    || reasonKey === "on-hold-followup"
+    || reasonKey === "status-review"
+    || reasonKey === "timeline-followup"
+  ) {
+    return "/app/confirm";
+  }
+  return "/app/capture";
+}
+
 function buildAppCaseHref(jobCaseId, reasonKey = "", targetId = "") {
   const params = new URLSearchParams();
   params.set("caseId", jobCaseId);
@@ -338,7 +361,7 @@ function buildAppCaseHref(jobCaseId, reasonKey = "", targetId = "") {
   if (targetId) {
     params.set("target", targetId);
   }
-  return `/app?${params.toString()}`;
+  return `${resolveAppStagePath(reasonKey, targetId)}?${params.toString()}`;
 }
 
 function buildHandoffAction(label, href, tone = "secondary") {
@@ -858,7 +881,7 @@ function deriveHandoffItems(snapshot) {
       whyNow: "막힌 경고가 없으니 가장 큰 가치가 있는 화면은 작업 워크스페이스입니다.",
       meta: "운영 신호는 안정적입니다.",
       actions: [
-        buildHandoffAction("작업 화면 열기", "/app", "primary"),
+        buildHandoffAction("작업 화면 열기", "/app/capture", "primary"),
         buildHandoffAction("운영 홈 보기", "/home")
       ]
     });

@@ -125,6 +125,15 @@ test("health endpoint returns launch metadata", async () => {
   }
 });
 
+test("workflow split routes resolve to the workspace document", async () => {
+  for (const route of ["/app/capture", "/app/quote", "/app/draft", "/app/confirm"]) {
+    const response = await fetch(`${baseUrl}${route}`);
+    assert.equal(response.status, 200, `${route} should resolve`);
+    const body = await response.text();
+    assert.match(body, /<html>/i);
+  }
+});
+
 
 test("admin data explorer returns dataset metadata", async () => {
   const response = await fetch(`${baseUrl}/api/v1/admin/data-explorer?dataset=users&limit=3`, {

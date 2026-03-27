@@ -186,7 +186,7 @@ function renderSettlementSummary(summary, company, role) {
     settlementMonthCountCopy.textContent = "이번 달 합의 건수가 아직 없습니다.";
     settlementLatestMeta.textContent = "아직 최근 합의 내역이 없습니다.";
     settlementRecent.className = "home-list empty-state";
-    settlementRecent.innerHTML = '아직 합의 완료로 기록된 작업 건이 없습니다. <a class="inline-link" href="/app">작업 화면</a>에서 합의 기록을 저장하면 여기서 누적 금액과 최근 내역을 함께 볼 수 있습니다.';
+    settlementRecent.innerHTML = '아직 합의 완료로 기록된 작업 건이 없습니다. <a class="inline-link" href="/app/capture">작업 화면</a>에서 합의 기록을 저장하면 여기서 누적 금액과 최근 내역을 함께 볼 수 있습니다.';
     return;
   }
 
@@ -218,7 +218,7 @@ function renderSettlementSummary(summary, company, role) {
         <span>${escapeHtml(`${formatMoney(item.confirmedAmount)} · ${formatDateTime(item.confirmedAt)}`)}</span>
         <p class="helper-text">상태 · ${escapeHtml(item.status || "AGREED")}</p>
         <div class="account-list-actions">
-          <a class="ghost-button account-inline-button" href="/app?caseId=${encodeURIComponent(item.jobCaseId)}">작업 건 보기</a>
+          <a class="ghost-button account-inline-button" href="/app/confirm?caseId=${encodeURIComponent(item.jobCaseId)}">작업 건 보기</a>
         </div>
       </article>
     `)

@@ -1,14 +1,95 @@
 ﻿const CSRF_COOKIE_NAME = "faa_csrf";
 const searchParams = new URLSearchParams(window.location.search);
+const pathname = window.location.pathname;
 const reviewMode = searchParams.get("review");
 const requestedCaseId = searchParams.get("caseId");
 const navigationSource = searchParams.get("source");
 const opsFocusReason = searchParams.get("reason");
 const opsFocusTarget = searchParams.get("target");
 
+function resolveWorkflowScreen(path) {
+  switch (path) {
+    case "/app/capture":
+      return "capture";
+    case "/app/quote":
+      return "quote";
+    case "/app/draft":
+      return "draft";
+    case "/app/confirm":
+      return "confirm";
+    default:
+      return "overview";
+  }
+}
+
+const workflowScreen = resolveWorkflowScreen(pathname);
+
+function getWorkflowScreenTargetId() {
+  switch (workflowScreen) {
+    case "quote":
+      return "quote-card";
+    case "draft":
+      return "draft-card";
+    case "confirm":
+      return "customer-confirm-card";
+    default:
+      return "";
+  }
+}
+
+const workflowScreenConfig = {
+  overview: {
+    label: "전체 보기",
+    path: "/app",
+    heroEyebrow: "DAMIT WORKSPACE",
+    heroTitle: "다밋 운영 워크스페이스",
+    heroCopy: "현장 기록, 작업 건 연결, 변경 견적, 설명 초안, 고객 확인, 합의 기록을 한 화면에서 이어서 관리합니다. 기록이 먼저 남고 설명이 따라오도록 구성해, 현장 이후 후속 커뮤니케이션을 빠르게 마무리할 수 있습니다.",
+    noteTitle: "전체 작업 화면",
+    noteCopy: "기존 전체 워크스페이스입니다. 단계별 화면이 필요하면 위 경로에서 각 단계를 따로 열 수 있습니다."
+  },
+  capture: {
+    label: "현장 기록",
+    path: "/app/capture",
+    heroEyebrow: "DAMIT CAPTURE",
+    heroTitle: "현장 기록과 작업 건 연결",
+    heroCopy: "현장 사진, 사유, 메모를 먼저 남기고 새 작업 건을 만들거나 기존 작업 건에 연결하는 intake 전용 화면입니다. 모바일과 현장 사용 기준으로 가장 먼저 열리도록 구성합니다.",
+    noteTitle: "현장 기록 단계",
+    noteCopy: "이 화면에서는 현장 기록과 작업 건 연결에만 집중합니다. 기록이 저장되고 연결되면 다음 단계로 넘어가면 됩니다."
+  },
+  quote: {
+    label: "변경 견적",
+    path: "/app/quote",
+    heroEyebrow: "DAMIT QUOTE",
+    heroTitle: "변경 견적과 범위 정리",
+    heroCopy: "선택한 작업 건의 변경 금액과 추가 범위를 정리하는 단계 화면입니다. 금액이 먼저 정리되어야 설명 초안과 합의 흐름이 흔들리지 않습니다.",
+    noteTitle: "변경 견적 단계",
+    noteCopy: "이 화면에서는 금액과 범위를 먼저 분명히 합니다. 견적이 저장되면 다음은 고객 설명 준비입니다."
+  },
+  draft: {
+    label: "설명 초안",
+    path: "/app/draft",
+    heroEyebrow: "DAMIT DRAFT",
+    heroTitle: "고객 설명 초안 준비",
+    heroCopy: "정리된 견적을 바탕으로 고객에게 보낼 설명 문장을 준비하는 단계 화면입니다. 실제 전달 가능한 문장을 빠르게 만드는 데 집중합니다.",
+    noteTitle: "설명 초안 단계",
+    noteCopy: "이 화면에서는 고객에게 바로 보낼 수 있는 초안을 준비합니다. 초안이 있으면 확인과 합의 단계로 이어가기 쉬워집니다."
+  },
+  confirm: {
+    label: "확인과 합의",
+    path: "/app/confirm",
+    heroEyebrow: "DAMIT CONFIRM",
+    heroTitle: "고객 확인과 합의 기록",
+    heroCopy: "고객 확인 링크, 합의 상태, 확인 채널, 최종 금액을 정리하는 마무리 단계 화면입니다. 마지막 상태를 기록으로 남기는 데 집중합니다.",
+    noteTitle: "확인과 합의 단계",
+    noteCopy: "이 화면에서는 고객 확인과 합의 기록을 최신 상태로 남깁니다. 완료 후에는 기록 다시 보기와 내부 공유용으로 활용하면 됩니다."
+  }
+};
+
 if (reviewMode) {
   document.body.classList.add(`review-${reviewMode}`);
 }
+
+document.body.classList.add(`workflow-screen-${workflowScreen}`);
 
 const statusLabels = {
   ALL: "전체",
@@ -56,7 +137,78 @@ const workflowSteps = [
   { key: "confirm", label: "합의와 확인 기록" }
 ];
 
+function buildWorkflowRouteHref(screenKey, jobCaseId = state?.selectedJobCaseId) {
+  const config = workflowScreenConfig[screenKey] || workflowScreenConfig.overview;
+  const params = new URLSearchParams(window.location.search);
+  if (jobCaseId) {
+    params.set("caseId", jobCaseId);
+  } else {
+    params.delete("caseId");
+  }
+  const query = params.toString();
+  return query ? `${config.path}?${query}` : config.path;
+}
+
+function syncUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  if (state.selectedJobCaseId) {
+    params.set("caseId", state.selectedJobCaseId);
+  } else {
+    params.delete("caseId");
+  }
+  const next = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+  window.history.replaceState({}, "", next);
+}
+
+function syncWorkflowRouteLinks() {
+  const links = [
+    ["overview", elements.workflowRouteOverview],
+    ["capture", elements.workflowRouteCapture],
+    ["quote", elements.workflowRouteQuote],
+    ["draft", elements.workflowRouteDraft],
+    ["confirm", elements.workflowRouteConfirm]
+  ];
+
+  links.forEach(([screenKey, node]) => {
+    if (!node) {
+      return;
+    }
+    node.href = buildWorkflowRouteHref(screenKey);
+    node.classList.toggle("is-active", workflowScreen === screenKey);
+  });
+}
+
+function applyWorkflowScreenPresentation() {
+  const config = workflowScreenConfig[workflowScreen] || workflowScreenConfig.overview;
+  if (elements.heroEyebrow) {
+    elements.heroEyebrow.textContent = config.heroEyebrow;
+  }
+  if (elements.heroTitle) {
+    elements.heroTitle.textContent = config.heroTitle;
+  }
+  if (elements.heroCopy) {
+    elements.heroCopy.textContent = config.heroCopy;
+  }
+  if (elements.screenNoteTitle) {
+    elements.screenNoteTitle.textContent = config.noteTitle;
+  }
+  if (elements.screenNoteCopy) {
+    elements.screenNoteCopy.textContent = config.noteCopy;
+  }
+  syncWorkflowRouteLinks();
+}
+
 const elements = {
+  heroEyebrow: document.querySelector("#app-hero-eyebrow"),
+  heroTitle: document.querySelector("#app-hero-title"),
+  heroCopy: document.querySelector("#app-hero-copy"),
+  screenNoteTitle: document.querySelector("#app-screen-note-title"),
+  screenNoteCopy: document.querySelector("#app-screen-note-copy"),
+  workflowRouteOverview: document.querySelector("#workflow-route-overview"),
+  workflowRouteCapture: document.querySelector("#workflow-route-capture"),
+  workflowRouteQuote: document.querySelector("#workflow-route-quote"),
+  workflowRouteDraft: document.querySelector("#workflow-route-draft"),
+  workflowRouteConfirm: document.querySelector("#workflow-route-confirm"),
   runtimeBadge: document.querySelector("#runtime-badge"),
   authBadge: document.querySelector("#auth-badge"),
   countsBadge: document.querySelector("#counts-badge"),
@@ -1264,6 +1416,8 @@ async function loadJobCases() {
   if (state.selectedJobCaseId && !state.jobCases.some((item) => item.id === state.selectedJobCaseId)) {
     state.selectedJobCaseId = null;
   }
+  syncUrlState();
+  syncWorkflowRouteLinks();
   renderJobCases();
   renderLinkCandidates();
 
@@ -1276,8 +1430,15 @@ async function loadJobCases() {
     return;
   }
 
-  if (!state.selectedJobCaseId && state.jobCases.length > 0 && (reviewMode || window.innerWidth >= 1280)) {
+  const shouldAutoselectFirstCase =
+    !state.selectedJobCaseId
+    && state.jobCases.length > 0
+    && (workflowScreen !== "capture" || reviewMode || window.innerWidth >= 1280);
+
+  if (shouldAutoselectFirstCase) {
     state.selectedJobCaseId = state.jobCases[0].id;
+    syncUrlState();
+    syncWorkflowRouteLinks();
     renderJobCases();
     await loadJobCaseDetail(state.selectedJobCaseId);
   }
@@ -1314,6 +1475,8 @@ function renderJobCases() {
   elements.jobCases.querySelectorAll(".job-card").forEach((card) => {
     card.addEventListener("click", async () => {
       state.selectedJobCaseId = card.dataset.jobCaseId;
+      syncUrlState();
+      syncWorkflowRouteLinks();
       renderJobCases();
       await loadJobCaseDetail(state.selectedJobCaseId);
       scrollDetailIntoView();
@@ -1361,8 +1524,14 @@ function renderLinkCandidates() {
         });
         showFeedback(elements.fieldRecordFeedback, "현장 기록을 기존 작업 건에 연결했습니다.", "success");
         state.selectedJobCaseId = button.dataset.linkJobCaseId;
+        syncUrlState();
+        syncWorkflowRouteLinks();
         await loadJobCases();
         await loadJobCaseDetail(state.selectedJobCaseId);
+        if (workflowScreen === "capture") {
+          window.location.href = buildWorkflowRouteHref("quote", state.selectedJobCaseId);
+          return;
+        }
         scrollDetailIntoView();
       } catch (error) {
         showFeedback(elements.fieldRecordFeedback, error.message, "error");
@@ -1438,6 +1607,8 @@ async function loadJobCaseDetail(jobCaseId) {
   };
   state.selectedTimelineItems = timeline.items || [];
   state.latestConfirmationUrl = detail.latestCustomerConfirmationLink?.confirmationUrl || "";
+  syncUrlState();
+  syncWorkflowRouteLinks();
 
   elements.detailEmpty.classList.add("hidden");
   elements.detailContent.classList.remove("hidden");
@@ -1463,6 +1634,13 @@ async function loadJobCaseDetail(jobCaseId) {
   renderWorkflowState();
   syncActionState();
   renderReviewState();
+
+  const workflowTargetId = getWorkflowScreenTargetId();
+  if (workflowTargetId && !reviewMode) {
+    window.requestAnimationFrame(() => {
+      scrollToSection(workflowTargetId, false);
+    });
+  }
 }
 
 elements.fieldRecordForm.addEventListener("submit", async (event) => {
@@ -1516,9 +1694,15 @@ elements.jobCaseForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ jobCaseId: jobCase.id })
     });
     state.selectedJobCaseId = jobCase.id;
+    syncUrlState();
+    syncWorkflowRouteLinks();
     showFeedback(elements.fieldRecordFeedback, "작업 건을 만들고 현장 기록까지 연결했습니다.", "success");
     await loadJobCases();
     await loadJobCaseDetail(jobCase.id);
+    if (workflowScreen === "capture") {
+      window.location.href = buildWorkflowRouteHref("quote", jobCase.id);
+      return;
+    }
     scrollDetailIntoView();
   } catch (error) {
     showFeedback(elements.fieldRecordFeedback, error.message, "error");
@@ -1723,6 +1907,8 @@ elements.resetFieldRecord.addEventListener("click", () => {
   showFeedback(elements.detailFeedback, "", "");
   renderLinkCandidates();
   renderJobCases();
+  syncUrlState();
+  syncWorkflowRouteLinks();
   elements.agreementForm.reset();
   setDefaultConfirmedAt();
   syncActionState();
@@ -1743,6 +1929,7 @@ if (elements.opsReturnAction) {
   });
 }
 
+applyWorkflowScreenPresentation();
 setDefaultConfirmedAt();
 renderCustomerConfirmationState(null);
 renderWorkflowState();
