@@ -253,6 +253,13 @@ const elements = {
   caseFocusStage: document.querySelector("#case-focus-stage"),
   caseFocusTitle: document.querySelector("#case-focus-title"),
   caseFocusCopy: document.querySelector("#case-focus-copy"),
+  stageActionCard: document.querySelector("#stage-action-card"),
+  stageActionBadge: document.querySelector("#stage-action-badge"),
+  stageActionTitle: document.querySelector("#stage-action-title"),
+  stageActionCopy: document.querySelector("#stage-action-copy"),
+  stageActionCompletion: document.querySelector("#stage-action-completion"),
+  stageActionPrimary: document.querySelector("#stage-action-primary"),
+  stageActionSecondary: document.querySelector("#stage-action-secondary"),
   caseProgressCopy: document.querySelector("#case-progress-copy"),
   caseProgressList: document.querySelector("#case-progress-list"),
   metricOriginal: document.querySelector("#metric-original"),
@@ -1119,7 +1126,234 @@ function renderCaseProgress(snapshot) {
         </article>
       `;
     })
-    .join("");
+      .join("");
+}
+
+function setStageActionButton(button, action) {
+  if (!button) {
+    return;
+  }
+  if (!action) {
+    button.classList.add("hidden");
+    button.dataset.actionType = "";
+    button.dataset.actionTarget = "";
+    return;
+  }
+  button.classList.remove("hidden");
+  button.textContent = action.label;
+  button.dataset.actionType = action.type;
+  button.dataset.actionTarget = action.target;
+}
+
+function buildStageRouteAction(label, screenKey) {
+  return { label, type: "route", target: screenKey };
+}
+
+function buildStageScrollAction(label, targetId) {
+  return { label, type: "scroll", target: targetId };
+}
+
+function buildStageActionSnapshot(snapshot) {
+  if (!["quote", "draft", "confirm"].includes(workflowScreen)) {
+    return null;
+  }
+
+  const detail = state.selectedJobCaseDetail;
+  const hasSelectedJobCase = Boolean(state.selectedJobCaseId && detail);
+  const hasQuote = hasStoredQuote(detail);
+  const hasDraft = Boolean(detail?.latestDraftMessage?.body);
+  const hasConfirmationLink = Boolean(state.latestConfirmationUrl);
+  const status = detail?.currentStatus || "UNEXPLAINED";
+  const terminal = isTerminalStatus(status);
+
+  if (!hasSelectedJobCase) {
+    return {
+      badge: "작업 건 필요",
+      tone: "tone-neutral",
+      title: "먼저 작업 건을 선택해 주세요.",
+      copy: "이 단계 화면은 선택된 작업 건 기준으로 열립니다. 목록에서 작업 건을 고르면 바로 이어서 처리할 수 있습니다.",
+      completion: "작업 건이 선택되면 이 단계 카드와 CTA가 바로 활성화됩니다.",
+      primary: buildStageScrollAction("작업 건 목록 보기", "job-cases"),
+      secondary: buildStageRouteAction("현장 기록 단계로 가기", "capture")
+    };
+  }
+
+  if (workflowScreen === "quote") {
+    if (terminal) {
+      return {
+        badge: "완료",
+        tone: "tone-good",
+        title: "이 작업 건은 이미 마무리된 상태입니다.",
+        copy: "지금은 견적 조정보다 확인과 합의 기록을 다시 보는 편이 더 적합합니다.",
+        completion: "합의 메모와 타임라인이 남아 있으면 충분합니다.",
+        primary: buildStageRouteAction("확인과 합의 단계로 이동", "confirm"),
+        secondary: buildStageRouteAction("전체 보기로 돌아가기", "overview")
+      };
+    }
+
+    if (!hasQuote) {
+      return {
+        badge: "금액 필요",
+        tone: "tone-warning",
+        title: "변경 금액을 먼저 저장해 주세요.",
+        copy: "현장 기록과 추가 범위를 기준으로 금액을 먼저 정리해야 이후 설명 초안과 고객 확인이 정확해집니다.",
+        completion: "변경 견적이 저장되고 범위 문장이 자연스럽게 읽히면 충분합니다.",
+        primary: buildStageScrollAction("변경 견적 카드 보기", "quote-card"),
+        secondary: buildStageRouteAction("현장 기록 단계로 돌아가기", "capture")
+      };
+    }
+
+    return {
+      badge: "정리됨",
+      tone: "tone-good",
+      title: "견적 정리는 끝났습니다.",
+      copy: "이제 고객에게 보낼 설명 초안을 만들면 다음 확인 단계로 자연스럽게 이어집니다.",
+      completion: "금액과 범위가 바로 설명 가능한 상태면 충분합니다.",
+      primary: buildStageRouteAction("설명 초안 단계로 이동", "draft"),
+      secondary: buildStageScrollAction("변경 견적 카드 다시 보기", "quote-card")
+    };
+  }
+
+  if (workflowScreen === "draft") {
+    if (terminal) {
+      return {
+        badge: "완료",
+        tone: "tone-good",
+        title: "이 작업 건은 이미 마무리된 상태입니다.",
+        copy: "지금은 초안 생성보다 확인과 합의 기록을 다시 보는 편이 더 적합합니다.",
+        completion: "합의 메모와 타임라인이 남아 있으면 충분합니다.",
+        primary: buildStageRouteAction("확인과 합의 단계로 이동", "confirm"),
+        secondary: buildStageRouteAction("전체 보기로 돌아가기", "overview")
+      };
+    }
+
+    if (!hasQuote) {
+      return {
+        badge: "선행 단계 필요",
+        tone: "tone-warning",
+        title: "먼저 견적 정리부터 마쳐 주세요.",
+        copy: "설명 초안은 변경 금액과 범위가 먼저 정리돼야 자연스럽고 정확하게 만들어집니다.",
+        completion: "변경 금액이 저장되면 이 단계로 다시 넘어오면 됩니다.",
+        primary: buildStageRouteAction("변경 견적 단계로 이동", "quote"),
+        secondary: null
+      };
+    }
+
+    if (!hasDraft) {
+      return {
+        badge: "초안 필요",
+        tone: "tone-warning",
+        title: "고객에게 보낼 문장을 먼저 만들어 주세요.",
+        copy: "고객이 바로 이해할 수 있는 문장을 준비해 두면 확인 링크와 합의 기록이 훨씬 자연스럽습니다.",
+        completion: "복사해서 바로 보낼 수 있는 초안이 있으면 충분합니다.",
+        primary: buildStageScrollAction("설명 초안 카드 보기", "draft-card"),
+        secondary: buildStageRouteAction("변경 견적 다시 보기", "quote")
+      };
+    }
+
+    return {
+      badge: "초안 준비됨",
+      tone: "tone-good",
+      title: "설명 초안이 준비됐습니다.",
+      copy: "이제 고객 확인과 합의 단계로 넘어가 최종 상태를 남기면 됩니다.",
+      completion: "초안이 있고 고객에게 바로 전달 가능한 문장이면 충분합니다.",
+      primary: buildStageRouteAction("확인과 합의 단계로 이동", "confirm"),
+      secondary: buildStageScrollAction("설명 초안 카드 다시 보기", "draft-card")
+    };
+  }
+
+  if (terminal) {
+    return {
+      badge: status === "AGREED" ? "완료" : "종료",
+      tone: status === "AGREED" ? "tone-good" : "tone-neutral",
+      title: status === "AGREED" ? "합의가 완료된 작업 건입니다." : "작업 제외로 마무리된 작업 건입니다.",
+      copy: "추가 조치보다 합의 메모, 고객 반응, 타임라인이 충분히 남아 있는지 다시 보는 용도로 활용하면 됩니다.",
+      completion: "최종 상태를 한 줄로 설명할 수 있으면 충분합니다.",
+      primary: buildStageScrollAction("합의 기록 다시 보기", "agreement-card"),
+      secondary: buildStageScrollAction("타임라인 보기", "timeline-card")
+    };
+  }
+
+  if (!hasQuote) {
+    return {
+      badge: "선행 단계 필요",
+      tone: "tone-warning",
+      title: "먼저 변경 견적부터 정리해 주세요.",
+      copy: "확인과 합의 단계는 금액이 정리된 뒤에 들어오는 것이 가장 안정적입니다.",
+      completion: "변경 금액이 저장되면 이 단계로 다시 오면 됩니다.",
+      primary: buildStageRouteAction("변경 견적 단계로 이동", "quote"),
+      secondary: null
+    };
+  }
+
+  if (!hasDraft) {
+    return {
+      badge: "선행 단계 필요",
+      tone: "tone-warning",
+      title: "먼저 고객 설명 초안을 준비해 주세요.",
+      copy: "확인 링크 발급이나 합의 기록 전에 초안이 있으면 고객과의 마지막 소통이 더 자연스럽습니다.",
+      completion: "고객에게 바로 보낼 수 있는 문장이 준비되면 충분합니다.",
+      primary: buildStageRouteAction("설명 초안 단계로 이동", "draft"),
+      secondary: null
+    };
+  }
+
+  if (status === "ON_HOLD") {
+    return {
+      badge: "보류",
+      tone: "tone-warning",
+      title: "답변을 기다리는 상태입니다.",
+      copy: "보류 사유와 마지막 반응만 최신으로 남겨 두면 다음 응대가 훨씬 쉬워집니다.",
+      completion: "지금 왜 기다리는지와 다음 액션을 한 줄로 설명할 수 있으면 충분합니다.",
+      primary: buildStageScrollAction("합의 기록 카드 보기", "agreement-card"),
+      secondary: buildStageScrollAction("타임라인 보기", "timeline-card")
+    };
+  }
+
+  if (!hasConfirmationLink) {
+    return {
+      badge: "링크 필요",
+      tone: "tone-warning",
+      title: "고객 확인 링크 또는 합의 기록을 정리해 주세요.",
+      copy: "설명은 끝났습니다. 고객이 직접 확인할 링크를 열거나, 이미 확인을 받았다면 합의 기록으로 바로 마무리하면 됩니다.",
+      completion: "확인 경로가 열리거나 합의 상태가 최신으로 정리되면 충분합니다.",
+      primary: buildStageScrollAction("고객 확인 카드 보기", "customer-confirm-card"),
+      secondary: buildStageScrollAction("합의 기록 카드 보기", "agreement-card")
+    };
+  }
+
+  return {
+    badge: "마무리",
+    tone: "tone-neutral",
+    title: "고객 확인 상태와 합의 기록을 함께 정리해 주세요.",
+    copy: "이미 확인 링크는 발급됐습니다. 이제 고객 반응, 마지막 메모, 합의 상태를 같은 흐름으로 정리하면 됩니다.",
+    completion: "링크 상태와 합의 메모가 서로 맞고, 마지막 상태를 설명할 수 있으면 충분합니다.",
+    primary: buildStageScrollAction("합의 기록 카드 보기", "agreement-card"),
+    secondary: buildStageScrollAction("고객 확인 카드 보기", "customer-confirm-card")
+  };
+}
+
+function renderStageAction(snapshot) {
+  if (!elements.stageActionCard) {
+    return;
+  }
+
+  const action = buildStageActionSnapshot(snapshot);
+  if (!action) {
+    elements.stageActionCard.classList.add("hidden");
+    setStageActionButton(elements.stageActionPrimary, null);
+    setStageActionButton(elements.stageActionSecondary, null);
+    return;
+  }
+
+  elements.stageActionCard.classList.remove("hidden");
+  elements.stageActionBadge.textContent = action.badge;
+  elements.stageActionBadge.className = `ops-badge ${action.tone}`;
+  elements.stageActionTitle.textContent = action.title;
+  elements.stageActionCopy.textContent = action.copy;
+  elements.stageActionCompletion.textContent = action.completion;
+  setStageActionButton(elements.stageActionPrimary, action.primary);
+  setStageActionButton(elements.stageActionSecondary, action.secondary);
 }
 
 function renderOpsReturnContext(snapshot) {
@@ -1183,6 +1417,7 @@ function renderWorkflowState() {
   if (elements.agreementStageNote) {
     elements.agreementStageNote.textContent = snapshot.agreementNote;
   }
+  renderStageAction(snapshot);
   renderWorkflowBanner(snapshot);
   renderPriorityList(snapshot.priorityItems);
   renderCaseProgress(snapshot);
@@ -1928,6 +2163,26 @@ if (elements.opsReturnAction) {
     }
   });
 }
+
+[elements.stageActionPrimary, elements.stageActionSecondary].forEach((button) => {
+  if (!button) {
+    return;
+  }
+  button.addEventListener("click", () => {
+    const actionType = button.dataset.actionType;
+    const actionTarget = button.dataset.actionTarget;
+    if (!actionType || !actionTarget) {
+      return;
+    }
+    if (actionType === "scroll") {
+      scrollToSection(actionTarget);
+      return;
+    }
+    if (actionType === "route") {
+      window.location.href = buildWorkflowRouteHref(actionTarget);
+    }
+  });
+});
 
 applyWorkflowScreenPresentation();
 setDefaultConfirmedAt();

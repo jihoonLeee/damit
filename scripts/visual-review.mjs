@@ -165,6 +165,36 @@ async function main() {
     });
 
     await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app/quote?caseId=jc_demo_3"),
+      width: 390,
+      height: 1180,
+      outputPath: path.join(outputDir, "mobile-quote-stage.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app/draft?caseId=jc_demo_3"),
+      width: 390,
+      height: 1180,
+      outputPath: path.join(outputDir, "mobile-draft-stage.png"),
+      timeBudget: 14000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
+      url: buildAuthenticatedReviewUrl(baseUrl, "/app/confirm?caseId=jc_demo_4"),
+      width: 390,
+      height: 1260,
+      outputPath: path.join(outputDir, "mobile-confirm-stage.png"),
+      timeBudget: 15000,
+      mobile: true,
+      edgePath
+    });
+
+    await captureScreenshot({
       url: buildAuthenticatedReviewUrl(baseUrl, "/app?review=ops-return&caseId=jc_demo_2&source=ops&reason=quote-missing&target=quote-card"),
       width: 390,
       height: 980,
@@ -355,6 +385,40 @@ async function seedReviewData(tempUploadDir, { ownerId, companyId }) {
         created_by_user_id: ownerId,
         assigned_user_id: ownerId,
         updated_by_user_id: ownerId
+      },
+      {
+        id: "jc_demo_3",
+        owner_id: ownerId,
+        customer_label: "강동 센트럴 1504호",
+        contact_memo: "네이버 예약 고객",
+        site_label: "강동 센트럴 1504호",
+        original_quote_amount: 290000,
+        revised_quote_amount: 340000,
+        quote_delta_amount: 50000,
+        current_status: "EXPLAINED",
+        created_at: plusMin(4),
+        updated_at: plusMin(14),
+        company_id: companyId,
+        created_by_user_id: ownerId,
+        assigned_user_id: ownerId,
+        updated_by_user_id: ownerId
+      },
+      {
+        id: "jc_demo_4",
+        owner_id: ownerId,
+        customer_label: "마포 스테이 602호",
+        contact_memo: "카카오 채널 문의",
+        site_label: "마포 스테이 602호",
+        original_quote_amount: 310000,
+        revised_quote_amount: 390000,
+        quote_delta_amount: 80000,
+        current_status: "EXPLAINED",
+        created_at: plusMin(6),
+        updated_at: plusMin(17),
+        company_id: companyId,
+        created_by_user_id: ownerId,
+        assigned_user_id: ownerId,
+        updated_by_user_id: ownerId
       }
     ],
     fieldRecords: [
@@ -407,6 +471,22 @@ async function seedReviewData(tempUploadDir, { ownerId, companyId }) {
         extra_work_summary: "니코틴 오염 제거, 베란다 추가, 창고 추가",
         reason_why_extra: "사전 기본 범위를 넘어서는 오염 제거와 공간 추가가 확인돼 별도 시간과 자재가 필요합니다.",
         updated_at: plusMin(10)
+      },
+      {
+        id: "sc_demo_3",
+        job_case_id: "jc_demo_3",
+        base_scope_summary: "기본 입주청소 범위는 바닥, 주방, 욕실, 창틀 청소를 포함합니다.",
+        extra_work_summary: "붙박이장 내부 정리와 창틀 오염 추가",
+        reason_why_extra: "기본 범위를 넘어서는 내부 정리와 창틀 오염 제거 시간이 별도로 필요합니다.",
+        updated_at: plusMin(13)
+      },
+      {
+        id: "sc_demo_4",
+        job_case_id: "jc_demo_4",
+        base_scope_summary: "기본 입주청소 범위는 일반 생활 오염 기준의 공간 정리를 전제로 합니다.",
+        extra_work_summary: "주방 후드 분해 세척, 욕실 실리콘 곰팡이 집중 제거",
+        reason_why_extra: "현장 확인 결과 기본 범위를 넘어서는 분해 세척과 오염 제거 시간이 필요합니다.",
+        updated_at: plusMin(16)
       }
     ],
     messageDrafts: [
@@ -417,6 +497,16 @@ async function seedReviewData(tempUploadDir, { ownerId, companyId }) {
         body: "현장 확인 결과 송파 힐스테이트 1203호에서 니코틴 오염과 베란다 추가 작업이 확인됐습니다. 추가 작업 항목은 니코틴 오염 제거, 베란다 추가, 창고 추가입니다. 사전 기본 범위를 넘어서는 오염 제거와 공간 추가가 확인돼 별도 시간과 자재가 필요합니다. 기존 견적 250,000원에서 320,000원으로 변경이 필요합니다. 진행 원하시면 확인 부탁드립니다.",
         created_at: plusMin(12),
         updated_at: plusMin(12),
+        company_id: companyId,
+        created_by_user_id: ownerId
+      },
+      {
+        id: "draft_demo_4",
+        job_case_id: "jc_demo_4",
+        tone: "CUSTOMER_MESSAGE",
+        body: "현장 확인 결과 마포 스테이 602호에서 주방 후드 분해 세척과 욕실 실리콘 곰팡이 제거가 추가로 필요합니다. 기존 견적 310,000원에서 390,000원으로 변경이 필요하며, 세부 확인을 위해 링크를 함께 보내드립니다.",
+        created_at: plusMin(17),
+        updated_at: plusMin(17),
         company_id: companyId,
         created_by_user_id: ownerId
       }
@@ -485,6 +575,36 @@ async function seedReviewData(tempUploadDir, { ownerId, companyId }) {
         summary: "카카오톡/문자로 320,000원 합의완료",
         payload_json: { agreementId: "ar_demo_1" },
         created_at: plusMin(15),
+        company_id: companyId,
+        actor_user_id: ownerId
+      },
+      {
+        id: "tl_demo_5",
+        job_case_id: "jc_demo_3",
+        event_type: "QUOTE_UPDATED",
+        summary: "변경 견적 +50000원",
+        payload_json: { revisedQuoteAmount: 340000 },
+        created_at: plusMin(13),
+        company_id: companyId,
+        actor_user_id: ownerId
+      },
+      {
+        id: "tl_demo_6",
+        job_case_id: "jc_demo_4",
+        event_type: "QUOTE_UPDATED",
+        summary: "변경 견적 +80000원",
+        payload_json: { revisedQuoteAmount: 390000 },
+        created_at: plusMin(16),
+        company_id: companyId,
+        actor_user_id: ownerId
+      },
+      {
+        id: "tl_demo_7",
+        job_case_id: "jc_demo_4",
+        event_type: "DRAFT_CREATED",
+        summary: "고객 설명 초안 생성",
+        payload_json: { draftId: "draft_demo_4" },
+        created_at: plusMin(17),
         company_id: companyId,
         actor_user_id: ownerId
       }
