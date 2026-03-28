@@ -99,4 +99,4 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/github_actions_deploy_key -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
-            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && host_gateway=\$(ip route | awk '/default/ {print \$3; exit}') && bash deploy/homelab/run-preview-postgres-command.sh -- node scripts/customer-notification-provider-smoke.mjs --base-url=https://preview.damit.kr --runtime-base-url=http://\${host_gateway}:3211 --phone='${{ inputs.phone }}' --require-auto=false"
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && bash deploy/homelab/run-preview-postgres-command.sh -- node scripts/customer-notification-provider-smoke.mjs --base-url=https://preview.damit.kr --runtime-base-url=http://127.0.0.1:3000 --phone='${{ inputs.phone }}' --require-auto=false"
