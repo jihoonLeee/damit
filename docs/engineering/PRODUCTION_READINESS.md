@@ -232,6 +232,17 @@ Keep append-only traces for:
   - manual follow-up when neither path is available
 - production trust still depends on live provider credentials, approved Kakao template mapping, and a preview-side provider smoke
 - a dedicated preview provider smoke command now exists so this proof can be repeated before broader rollout claims
+
+## Latest PM preview notification parity note
+
+- preview public route and direct preview runtime now agree on customer notification behavior
+- the latest preview provider smoke is green from a parity perspective:
+  - public preview route returns delivery metadata
+  - direct preview runtime returns the same delivery metadata shape
+- the current result is still `MANUAL_REQUIRED_CONFIG`, which means the remaining blocker is provider configuration in preview, not stale code or routing drift
+- PM judgment:
+  - `preview parity GO`
+  - `automatic customer delivery HOLD`
   - `damit.kr` remains on SQLite during the switch
 - an extra stale `cloudflared` user process caused mixed routing until it was stopped
 - the remaining optional proof for this batch is rollback back to SQLite after preview testing

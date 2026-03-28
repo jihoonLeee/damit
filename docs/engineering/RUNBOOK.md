@@ -310,6 +310,11 @@ Current result:
 
 - live public runtime already uses `MAIL_PROVIDER=RESEND`
 - `AUTH_DEBUG_LINKS=false` should remain true for public and preview unless an isolated debug drill is intentional
+- preview parity is now proven on both:
+  - `https://preview.damit.kr`
+  - the direct preview container runtime
+- the current preview smoke result is `MANUAL_REQUIRED_CONFIG`
+- that means the next operator task is to add live `SOLAPI_*`, `KAKAO_BIZMESSAGE_PROVIDER`, `SMS_PROVIDER`, and approved Kakao template values to preview before expecting automatic delivery
 - next mail work is not initial delivery, but monitoring and channel expansion
 
 
