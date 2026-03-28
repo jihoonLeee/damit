@@ -448,6 +448,34 @@ function describeFocusUrgency(item) {
   }
 }
 
+function formatCustomerNotificationReadiness(value) {
+  switch (String(value || "").toUpperCase()) {
+    case "READY":
+      return "운영 준비 완료";
+    case "KAKAO_CONFIG_REQUIRED":
+      return "카카오 설정 필요";
+    case "SMS_FALLBACK_CONFIG_REQUIRED":
+      return "문자 fallback 설정 필요";
+    case "MANUAL_ONLY":
+      return "수동 전달";
+    default:
+      return "확인 필요";
+  }
+}
+
+function formatCustomerNotificationChannel(value) {
+  switch (String(value || "").toUpperCase()) {
+    case "KAKAO_ALIMTALK":
+      return "카카오 알림톡";
+    case "SMS":
+      return "문자";
+    case "MANUAL_COPY":
+      return "수동 전달";
+    default:
+      return value || "-";
+  }
+}
+
 function describeFocusFirstCheck(item) {
   switch (item?.focusTargetId) {
     case "quote-card":
@@ -668,6 +696,22 @@ function deriveAlerts(health, snapshot) {
       tone: "warning",
       title: "장애 모니터링이 아직 비활성 상태입니다",
       body: "예상치 못한 5xx를 빠르게 잡으려면 SENTRY_DSN을 넣고 런타임 오류 수집을 켜 두는 편이 좋습니다."
+    });
+  }
+
+  if (snapshot.runtime?.customerNotificationOperationalReadiness === "KAKAO_CONFIG_REQUIRED") {
+    alerts.push({
+      tone: "warning",
+      title: "고객 알림 채널이 아직 수동 전달 상태입니다",
+      body: "운영 기준 채널은 카카오 알림톡 우선이지만 provider 설정이 비어 있습니다. 현재는 확인 링크를 복사해 직접 보내야 합니다."
+    });
+  }
+
+  if (snapshot.runtime?.customerNotificationOperationalReadiness === "SMS_FALLBACK_CONFIG_REQUIRED") {
+    alerts.push({
+      tone: "warning",
+      title: "문자 fallback 설정이 아직 빠져 있습니다",
+      body: "카카오 알림톡 우선 전략은 준비됐지만 실패 시 문자 fallback 경로가 비어 있습니다."
     });
   }
 
@@ -1053,6 +1097,11 @@ function renderSnapshotDetails(snapshot) {
     ["메일 발신 주소", snapshot.runtime?.mailFromConfigured ? "설정됨" : "미설정"],
     ["Resend API", snapshot.runtime?.resendConfigured ? "설정됨" : "미설정"],
     ["Sentry", snapshot.runtime?.sentryConfigured ? "설정됨" : "미설정"],
+    ["고객 알림 기본 채널", formatCustomerNotificationChannel(snapshot.runtime?.customerNotificationPrimary)],
+    ["고객 알림 보조 채널", snapshot.runtime?.customerNotificationFallback ? formatCustomerNotificationChannel(snapshot.runtime?.customerNotificationFallback) : "없음"],
+    ["카카오 BizMessage", snapshot.runtime?.kakaoConfigured ? snapshot.runtime?.kakaoBizMessageProvider || "설정됨" : "미설정"],
+    ["SMS Provider", snapshot.runtime?.smsConfigured ? snapshot.runtime?.smsProvider || "설정됨" : "미설정"],
+    ["고객 알림 준비도", formatCustomerNotificationReadiness(snapshot.runtime?.customerNotificationOperationalReadiness)],
     ["디버그 로그인 링크", formatEnabledState(snapshot.runtime?.authDebugLinks)],
     ["신뢰 출처 검사", formatEnabledState(snapshot.runtime?.authEnforceTrustedOrigin)],
     ["추가 허용 출처", snapshot.runtime?.trustedOriginCount ? `${formatCount(snapshot.runtime?.trustedOriginCount)}개` : "없음"],

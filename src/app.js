@@ -33,6 +33,7 @@ import {
 import { ensureAuthStorage } from "./contexts/auth/infrastructure/sqlite-auth-store.js";
 import { ensureCustomerConfirmationStorage } from "./contexts/customer-confirmation/infrastructure/sqlite-customer-confirmation-store.js";
 import { sendInvitationEmail, sendMagicLinkEmail } from "./mail-gateway.js";
+import { buildCustomerNotificationRuntime } from "./notifications/customer-notification-runtime.js";
 import { createRepositoryBundle } from "./repositories/createRepositoryBundle.js";
 import { normalizePathname, serveStaticRequest } from "./http/static-routes.js";
 import { handleSystemApiRequest } from "./http/system-routes.js";
@@ -408,16 +409,17 @@ async function handleApiRequest(request, response, repositories) {
       recentLoginActivity,
       recentAccountActivity: scopedAccountActivity,
       settlementSummary,
-      security: {
-        trustedOriginEnforced: config.authEnforceTrustedOrigin,
-        debugLinksEnabled: config.authDebugLinks,
-        sessionSameSite: config.sessionCookieSameSite,
-        csrfSameSite: config.csrfCookieSameSite,
-        sessionIdleTimeoutSeconds: config.sessionIdleTimeoutSeconds,
-        mailProvider: (config.mailProvider || "FILE").toUpperCase(),
-        mailFromConfigured: Boolean(config.mailFrom),
-        resendConfigured: Boolean(config.resendApiKey)
-      },
+        security: {
+          trustedOriginEnforced: config.authEnforceTrustedOrigin,
+          debugLinksEnabled: config.authDebugLinks,
+          sessionSameSite: config.sessionCookieSameSite,
+          csrfSameSite: config.csrfCookieSameSite,
+          sessionIdleTimeoutSeconds: config.sessionIdleTimeoutSeconds,
+          mailProvider: (config.mailProvider || "FILE").toUpperCase(),
+          mailFromConfigured: Boolean(config.mailFrom),
+          resendConfigured: Boolean(config.resendApiKey),
+          ...buildCustomerNotificationRuntime(config)
+        },
       internalAccess: {
         systemAdmin: isSystemAdminEmail(authContext.email)
       }

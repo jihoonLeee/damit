@@ -8,6 +8,7 @@ import { config } from "../../config.js";
 import { applyPostgresMigrations, getPostgresMigrationStatus } from "../../db/postgres-migrator.js";
 import { buildPostgresConnectionOptions } from "../../db/postgres-connection.js";
 import { HttpError } from "../../http.js";
+import { buildCustomerNotificationRuntime } from "../../notifications/customer-notification-runtime.js";
 
 const { Pool } = pg;
 
@@ -595,13 +596,16 @@ function buildPostgresOpsRuntimeReadiness() {
     mailProvider,
     mailFromConfigured,
     resendConfigured,
+    sentryConfigured: Boolean(String(config.sentryDsn || "").trim()),
+    sentryEnvironment: config.sentryEnvironment || config.nodeEnv,
     authDebugLinks,
     authEnforceTrustedOrigin,
     trustedOriginCount: trustedOrigins.length,
     trustedOriginsConfigured: trustedOrigins.length > 0,
     appBaseUrlConfigured,
     authDeliveryMode,
-    authOperationalReadiness
+    authOperationalReadiness,
+    ...buildCustomerNotificationRuntime(config)
   };
 }
 

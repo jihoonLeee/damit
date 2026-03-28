@@ -111,6 +111,34 @@ function formatMoney(value) {
   return `${new Intl.NumberFormat("ko-KR").format(amount)}원`;
 }
 
+function formatCustomerNotificationChannel(value) {
+  switch (String(value || "").toUpperCase()) {
+    case "KAKAO_ALIMTALK":
+      return "카카오 알림톡";
+    case "SMS":
+      return "문자";
+    case "MANUAL_COPY":
+      return "수동 전달";
+    default:
+      return value || "-";
+  }
+}
+
+function formatCustomerNotificationReadiness(value) {
+  switch (String(value || "").toUpperCase()) {
+    case "READY":
+      return "운영 준비 완료";
+    case "KAKAO_CONFIG_REQUIRED":
+      return "카카오 설정 필요";
+    case "SMS_FALLBACK_CONFIG_REQUIRED":
+      return "문자 fallback 설정 필요";
+    case "MANUAL_ONLY":
+      return "수동 전달";
+    default:
+      return "확인 필요";
+  }
+}
+
 function isPast(value) {
   return Boolean(value) && new Date(value).getTime() < Date.now();
 }
@@ -747,7 +775,10 @@ function renderSecurity(security = {}) {
     ["세션 유휴 만료 기준", idleHours ? `${idleHours}시간` : "-"],
     ["메일 전달 모드", mailMode],
     ["발신 주소 설정", security.mailFromConfigured ? "설정됨" : "미설정"],
-    ["Resend API", security.resendConfigured ? "설정됨" : "미설정"]
+    ["Resend API", security.resendConfigured ? "설정됨" : "미설정"],
+    ["고객 알림 기본 채널", formatCustomerNotificationChannel(security.customerNotificationPrimary)],
+    ["고객 알림 보조 채널", security.customerNotificationFallback ? formatCustomerNotificationChannel(security.customerNotificationFallback) : "없음"],
+    ["고객 알림 준비도", formatCustomerNotificationReadiness(security.customerNotificationOperationalReadiness)]
   ];
 
   securityList.innerHTML = rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");

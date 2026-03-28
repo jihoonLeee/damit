@@ -441,6 +441,11 @@ test("account overview returns company, memberships, invitations, and security s
   assert.equal(Array.isArray(accountPayload.recentAccountActivity), true);
   assert.equal(accountPayload.user.phoneNumber, null);
   assert.equal(accountPayload.security.mailProvider, "FILE");
+  assert.equal(accountPayload.security.customerNotificationPrimary, "KAKAO_ALIMTALK");
+  assert.equal(accountPayload.security.customerNotificationFallback, "SMS");
+  assert.equal(accountPayload.security.kakaoConfigured, false);
+  assert.equal(accountPayload.security.smsConfigured, false);
+  assert.equal(accountPayload.security.customerNotificationOperationalReadiness, "KAKAO_CONFIG_REQUIRED");
   assert.equal(accountPayload.internalAccess.systemAdmin, false);
 });
 

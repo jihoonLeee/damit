@@ -304,6 +304,11 @@ test("admin backup and reset endpoints work for owner session operations", async
   assert.equal(snapshotPayload.runtime.mailProvider, "FILE");
   assert.equal(snapshotPayload.runtime.mailFromConfigured, true);
   assert.equal(snapshotPayload.runtime.resendConfigured, false);
+  assert.equal(snapshotPayload.runtime.customerNotificationPrimary, "KAKAO_ALIMTALK");
+  assert.equal(snapshotPayload.runtime.customerNotificationFallback, "SMS");
+  assert.equal(snapshotPayload.runtime.kakaoConfigured, false);
+  assert.equal(snapshotPayload.runtime.smsConfigured, false);
+  assert.equal(snapshotPayload.runtime.customerNotificationOperationalReadiness, "KAKAO_CONFIG_REQUIRED");
   assert.equal(snapshotPayload.runtime.authDebugLinks, true);
   assert.equal(snapshotPayload.runtime.authEnforceTrustedOrigin, false);
   assert.equal(snapshotPayload.runtime.authDeliveryMode, "FILE_PREVIEW");

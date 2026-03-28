@@ -296,6 +296,7 @@ const elements = {
   customerConfirmBadge: document.querySelector("#customer-confirm-badge"),
   customerConfirmMeta: document.querySelector("#customer-confirm-meta"),
   customerConfirmGuidance: document.querySelector("#customer-confirm-guidance"),
+  customerConfirmDeliveryNote: document.querySelector("#customer-confirm-delivery-note"),
   customerConfirmUrl: document.querySelector("#customer-confirm-url"),
   openConfirmLink: document.querySelector("#open-confirm-link"),
   copyConfirmLink: document.querySelector("#copy-confirm-link"),
@@ -1664,6 +1665,9 @@ function renderCustomerConfirmationState(detail) {
     elements.customerConfirmSummary.textContent = "작업 건을 선택하면 고객 확인 링크 상태를 여기서 바로 보여줍니다.";
     elements.customerConfirmMeta.textContent = "링크 발급, 고객 열람, 확인 완료 여부가 여기와 타임라인에 함께 반영됩니다.";
     elements.customerConfirmGuidance.textContent = "금액과 설명이 준비되면 확인 링크를 발급하고, 완료되면 기록 확인용으로만 다시 보면 됩니다.";
+    if (elements.customerConfirmDeliveryNote) {
+      elements.customerConfirmDeliveryNote.textContent = "현재는 링크를 복사해 수동 전달합니다. 운영 기준 채널은 카카오 알림톡 우선, 문자 fallback입니다.";
+    }
     elements.customerConfirmUrl.value = "";
     elements.openConfirmLink.classList.add("hidden");
     elements.openConfirmLink.href = "#";
@@ -1700,6 +1704,12 @@ function renderCustomerConfirmationState(detail) {
     elements.customerConfirmSummary.textContent = `최근 링크 상태: 발급됨 · 만료 ${formatDateTime(latest.expiresAt)}`;
     elements.customerConfirmMeta.textContent = "아직 고객 열람 기록이 없습니다. 링크를 보냈다면 열람 여부를 조금 더 지켜보면 됩니다.";
     elements.customerConfirmGuidance.textContent = "링크를 전달한 뒤에는 고객이 열었는지, 그리고 합의 상태가 어떻게 끝났는지를 이 카드와 타임라인에서 같이 확인합니다.";
+  }
+
+  if (elements.customerConfirmDeliveryNote) {
+    elements.customerConfirmDeliveryNote.textContent = latest
+      ? "현재는 링크를 복사해 카카오톡 또는 문자로 수동 전달하고, 이후 열람/확인 상태를 이 카드에서 추적합니다."
+      : "현재는 링크를 복사해 수동 전달합니다. 운영 기준 채널은 카카오 알림톡 우선, 문자 fallback입니다.";
   }
 
   elements.customerConfirmUrl.value = state.latestConfirmationUrl || "";
@@ -2230,7 +2240,7 @@ elements.generateConfirmLink.addEventListener("click", async () => {
     await loadJobCaseDetail(state.selectedJobCaseId);
     state.latestConfirmationUrl = payload.confirmationUrl;
     renderCustomerConfirmationState(state.selectedJobCaseDetail);
-    showFeedback(elements.detailFeedback, "고객 확인 링크를 발급했습니다.", "success");
+    showFeedback(elements.detailFeedback, "고객 확인 링크를 발급했습니다. 현재는 링크를 복사해 카카오톡 또는 문자로 전달해 주세요.", "success");
     scrollToSection("customer-confirm-card");
   } catch (error) {
     showFeedback(elements.detailFeedback, error.message, "error");

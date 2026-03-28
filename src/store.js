@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 import { config } from "./config.js";
+import { buildCustomerNotificationRuntime } from "./notifications/customer-notification-runtime.js";
 import { createObjectStorage } from "./object-storage/createObjectStorage.js";
 
 export const emptyDb = {
@@ -1123,7 +1124,8 @@ function buildOpsRuntimeReadiness() {
     trustedOriginsConfigured: trustedOrigins.length > 0,
     appBaseUrlConfigured,
     authDeliveryMode,
-    authOperationalReadiness
+    authOperationalReadiness,
+    ...buildCustomerNotificationRuntime(config)
   };
 }
 
