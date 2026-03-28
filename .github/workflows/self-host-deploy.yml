@@ -61,6 +61,7 @@ jobs:
           rsync -az --delete \
             -e "ssh -i ~/.ssh/github_actions_deploy_key -p ${{ secrets.SELF_HOST_SSH_PORT }}" \
             --filter='P deploy/homelab/.env' \
+            --filter='P deploy/homelab/.env.preview-postgres' \
             --exclude '.git/' \
             --exclude 'node_modules/' \
             --exclude 'data/' \

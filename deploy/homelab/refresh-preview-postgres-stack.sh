@@ -8,7 +8,8 @@ PROJECT_NAME="${PROJECT_NAME:-damit-preview-postgres}"
 COMPOSE_FILE="$APP_ROOT/deploy/homelab/docker-compose.yml"
 
 if [[ ! -f "$PREVIEW_ENV_FILE" ]]; then
-  echo "Preview Postgres env not found at $PREVIEW_ENV_FILE. Skipping preview refresh."
+  echo "Preview Postgres env not found at $PREVIEW_ENV_FILE. Rebuilding preview rehearsal env first..."
+  bash "$APP_ROOT/deploy/homelab/rehearse-postgres-cutover.sh" --project-name "$PROJECT_NAME"
   exit 0
 fi
 
