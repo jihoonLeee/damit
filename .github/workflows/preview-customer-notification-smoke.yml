@@ -71,6 +71,22 @@ jobs:
             --exclude '.fly-config/' \
             ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
 
+      - name: Ensure preview Postgres stack on server
+        shell: bash
+        env:
+          PREVIEW_POSTGRES_DATABASE_URL: ${{ secrets.PREVIEW_POSTGRES_DATABASE_URL }}
+          PREVIEW_POSTGRES_SSL_MODE: ${{ secrets.PREVIEW_POSTGRES_SSL_MODE }}
+          PREVIEW_POSTGRES_APPLICATION_NAME: ${{ secrets.PREVIEW_POSTGRES_APPLICATION_NAME }}
+          PREVIEW_POSTGRES_POOL_MAX: ${{ secrets.PREVIEW_POSTGRES_POOL_MAX }}
+        run: |
+          set -euo pipefail
+          db_url_q="$(printf '%q' "${PREVIEW_POSTGRES_DATABASE_URL:-}")"
+          ssl_mode_q="$(printf '%q' "${PREVIEW_POSTGRES_SSL_MODE:-}")"
+          app_name_q="$(printf '%q' "${PREVIEW_POSTGRES_APPLICATION_NAME:-}")"
+          pool_max_q="$(printf '%q' "${PREVIEW_POSTGRES_POOL_MAX:-}")"
+          ssh -i ~/.ssh/github_actions_deploy_key -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && DATABASE_URL=${db_url_q} POSTGRES_SSL_MODE=${ssl_mode_q} POSTGRES_APPLICATION_NAME=${app_name_q} POSTGRES_POOL_MAX=${pool_max_q} bash ./deploy/homelab/refresh-preview-postgres-stack.sh"
+
       - name: Smoke preview public route on server
         shell: bash
         run: |
