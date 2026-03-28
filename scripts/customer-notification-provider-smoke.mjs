@@ -84,6 +84,7 @@ const envFile = readArg("env-file", path.join(rootDir, ".env.production.local"))
 loadEnvFile(envFile, { override: true });
 
 const baseUrl = readArg("base-url", process.env.APP_BASE_URL || "https://preview.damit.kr");
+const runtimeBaseUrl = readArg("runtime-base-url", baseUrl);
 const testPhone = String(readArg("phone", process.env.CUSTOMER_NOTIFICATION_TEST_PHONE || "")).trim();
 const requireAuto = readBooleanArg("require-auto", true);
 const stamp = new Date().toISOString().replace(/[.:]/g, "-");
@@ -156,19 +157,19 @@ try {
     "x-csrf-token": csrfToken
   };
 
-  const health = await fetch(`${baseUrl}/api/v1/health`);
+  const health = await fetch(`${runtimeBaseUrl}/api/v1/health`);
   const healthPayload = await health.json();
   if (!health.ok || healthPayload.storageEngine !== "POSTGRES") {
     throw new Error(`Preview runtime is not ready for provider smoke: ${JSON.stringify(healthPayload)}`);
   }
 
-  const me = await requestJson(baseUrl, "GET", "/api/v1/me", null, { cookie: cookieHeader });
+  const me = await requestJson(runtimeBaseUrl, "GET", "/api/v1/me", null, { cookie: cookieHeader });
   if (me.response.status !== 200 || !me.payload?.authenticated) {
     throw new Error("Preview QA bootstrap session was not accepted by the preview runtime.");
   }
 
   const createJobCase = await requestJson(
-    baseUrl,
+    runtimeBaseUrl,
     "POST",
     "/api/v1/job-cases",
     {
@@ -198,7 +199,7 @@ try {
     new File([new Uint8Array([137, 80, 78, 71])], "preview-smoke.png", { type: "image/png" })
   );
 
-  const createFieldRecord = await requestForm(baseUrl, "/api/v1/field-records", formData, {
+  const createFieldRecord = await requestForm(runtimeBaseUrl, "/api/v1/field-records", formData, {
     cookie: cookieHeader,
     headers: writeHeaders
   });
@@ -209,7 +210,7 @@ try {
   const fieldRecordId = createFieldRecord.payload.id;
 
   const linkFieldRecord = await requestJson(
-    baseUrl,
+    runtimeBaseUrl,
     "POST",
     `/api/v1/field-records/${fieldRecordId}/link-job-case`,
     { jobCaseId },
@@ -223,7 +224,7 @@ try {
   }
 
   const updateQuote = await requestJson(
-    baseUrl,
+    runtimeBaseUrl,
     "PATCH",
     `/api/v1/job-cases/${jobCaseId}/quote`,
     { revisedQuoteAmount: 240000 },
@@ -237,7 +238,7 @@ try {
   }
 
   const createDraft = await requestJson(
-    baseUrl,
+    runtimeBaseUrl,
     "POST",
     `/api/v1/job-cases/${jobCaseId}/draft-message`,
     { tone: "CUSTOMER_MESSAGE" },
@@ -251,7 +252,7 @@ try {
   }
 
   const createLink = await requestJson(
-    baseUrl,
+    runtimeBaseUrl,
     "POST",
     `/api/v1/job-cases/${jobCaseId}/customer-confirmation-links`,
     { expiresInHours: 72 },
@@ -265,7 +266,7 @@ try {
   }
 
   const detail = await requestJson(
-    baseUrl,
+    runtimeBaseUrl,
     "GET",
     `/api/v1/job-cases/${jobCaseId}`,
     null,
@@ -290,6 +291,7 @@ try {
     ok: true,
     envFile,
     baseUrl,
+    runtimeBaseUrl,
     requireAuto,
     jobCaseId,
     fieldRecordId,

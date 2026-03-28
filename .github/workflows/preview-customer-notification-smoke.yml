@@ -1,0 +1,85 @@
+name: Preview Customer Notification Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      phone:
+        description: "Test phone number for preview customer notification smoke"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TAILSCALE_TAGS: ${{ secrets.TAILSCALE_TAGS != '' && secrets.TAILSCALE_TAGS || 'tag:ci' }}
+  TAILSCALE_OAUTH_READY: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID != '' && secrets.TAILSCALE_OAUTH_SECRET != '' }}
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Join Tailscale network (OAuth client)
+        if: ${{ env.TAILSCALE_OAUTH_READY == 'true' }}
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+          tags: ${{ env.TAILSCALE_TAGS }}
+          hostname: github-actions-damit-preview-notify-smoke
+          ping: ${{ secrets.SELF_HOST_TAILNET_HOST }}
+
+      - name: Join Tailscale network (Auth key fallback)
+        if: ${{ env.TAILSCALE_OAUTH_READY != 'true' }}
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          hostname: github-actions-damit-preview-notify-smoke
+          ping: ${{ secrets.SELF_HOST_TAILNET_HOST }}
+
+      - name: Prepare deploy key
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' '${{ secrets.SELF_HOST_SSH_KEY }}' > ~/.ssh/github_actions_deploy_key
+          chmod 600 ~/.ssh/github_actions_deploy_key
+
+      - name: Trust server host key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_TAILNET_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/github_actions_deploy_key -p ${{ secrets.SELF_HOST_SSH_PORT }}" \
+            --filter='P deploy/homelab/.env' \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'data/' \
+            --exclude 'data-preview-postgres/' \
+            --exclude 'output/' \
+            --exclude '.fly-config/' \
+            ./ "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}:${{ secrets.SELF_HOST_APP_DIR }}/"
+
+      - name: Smoke preview public route on server
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/github_actions_deploy_key -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && node scripts/customer-notification-provider-smoke.mjs --env-file=deploy/homelab/.env.preview-postgres --base-url=https://preview.damit.kr --phone='${{ inputs.phone }}' --require-auto=false"
+
+      - name: Smoke preview local 3211 runtime on server
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/github_actions_deploy_key -p "${{ secrets.SELF_HOST_SSH_PORT }}" "${{ secrets.SELF_HOST_SSH_USER }}@${{ secrets.SELF_HOST_TAILNET_HOST }}" \
+            "cd '${{ secrets.SELF_HOST_APP_DIR }}' && node scripts/customer-notification-provider-smoke.mjs --env-file=deploy/homelab/.env.preview-postgres --base-url=https://preview.damit.kr --runtime-base-url=http://127.0.0.1:3211 --phone='${{ inputs.phone }}' --require-auto=false"
