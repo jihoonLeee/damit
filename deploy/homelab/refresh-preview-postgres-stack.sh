@@ -13,6 +13,22 @@ if [[ ! -f "$PREVIEW_ENV_FILE" ]]; then
   exit 0
 fi
 
+required_env_keys=(
+  DATABASE_URL
+  STORAGE_ENGINE
+  APP_PORT
+  APP_BASE_URL
+  TRUSTED_ORIGINS
+)
+
+for key in "${required_env_keys[@]}"; do
+  if ! grep -Eq "^${key}=.+" "$PREVIEW_ENV_FILE"; then
+    echo "Preview Postgres env at $PREVIEW_ENV_FILE is missing $key. Rebuilding preview rehearsal env first..."
+    bash "$APP_ROOT/deploy/homelab/rehearse-postgres-cutover.sh" --project-name "$PROJECT_NAME"
+    exit 0
+  fi
+done
+
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD=(docker compose)
 elif command -v docker-compose >/dev/null 2>&1; then
