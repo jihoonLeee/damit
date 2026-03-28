@@ -18,6 +18,19 @@ function readBooleanArg(name, fallback) {
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
 }
 
+async function fileExists(targetPath) {
+  if (!targetPath) {
+    return false;
+  }
+
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function readSetCookies(response) {
   return typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
 }
@@ -80,8 +93,13 @@ async function requestForm(baseUrl, pathname, formData, { headers = {}, cookie =
 }
 
 const rootDir = path.resolve(import.meta.dirname, "..");
-const envFile = readArg("config-env-file", readArg("env-file", path.join(rootDir, ".env.production.local")));
-loadEnvFile(envFile, { override: true });
+const defaultEnvFile = path.join(rootDir, ".env.production.local");
+const requestedEnvFile = readArg("config-env-file", readArg("env-file", ""));
+const envFile = requestedEnvFile || (await fileExists(defaultEnvFile) ? defaultEnvFile : "");
+
+if (envFile) {
+  loadEnvFile(envFile, { override: true });
+}
 
 const baseUrl = readArg("base-url", process.env.APP_BASE_URL || "https://preview.damit.kr");
 const runtimeBaseUrl = readArg("runtime-base-url", baseUrl);
