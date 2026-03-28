@@ -148,6 +148,7 @@ Expected current result:
    - `bash deploy/homelab/rollback-to-sqlite.sh`
 9. point `preview.damit.kr` back to `127.0.0.1:3210`
 10. confirm preview is back on SQLite
+11. when preview uses real customer notification channels, keep `SOLAPI_*`, `KAKAO_BIZMESSAGE_PROVIDER`, `SMS_PROVIDER`, and `CUSTOMER_NOTIFICATION_*` values in the preview env as well
 
 ## Preview Postgres acceptance gate
 

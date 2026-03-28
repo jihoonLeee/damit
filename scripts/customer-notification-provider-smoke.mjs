@@ -264,9 +264,6 @@ try {
     throw new Error(`Customer confirmation link issuance failed: ${JSON.stringify(createLink.payload)}`);
   }
 
-  const delivery = createLink.payload?.delivery || null;
-  assertCustomerNotificationSmokeResult(delivery, { requireAuto });
-
   const detail = await requestJson(
     baseUrl,
     "GET",
@@ -278,6 +275,17 @@ try {
     throw new Error(`Job case detail fetch failed: ${JSON.stringify(detail.payload)}`);
   }
 
+  const delivery = createLink.payload?.delivery || null;
+  const persistedDeliveryStatus = detail.payload?.latestCustomerConfirmationLink?.deliveryStatus || null;
+  if (!delivery) {
+    throw new Error(
+      `Customer notification smoke did not receive delivery metadata. `
+      + `response=${JSON.stringify(createLink.payload)} `
+      + `persistedDeliveryStatus=${JSON.stringify(persistedDeliveryStatus)}`
+    );
+  }
+  assertCustomerNotificationSmokeResult(delivery, { requireAuto });
+
   console.log(JSON.stringify({
     ok: true,
     envFile,
@@ -287,11 +295,10 @@ try {
     fieldRecordId,
     confirmationUrl: createLink.payload.confirmationUrl,
     delivery,
-    persistedDeliveryStatus: detail.payload?.latestCustomerConfirmationLink?.deliveryStatus || null
+    persistedDeliveryStatus
   }, null, 2));
 } finally {
   if (typeof repositories.close === "function") {
     await repositories.close();
   }
 }
-
