@@ -126,7 +126,10 @@ const timelineLabels = {
   AGREEMENT_RECORDED: "합의 기록이 저장되었습니다",
   CUSTOMER_CONFIRMATION_ISSUED: "고객 확인 링크가 발급되었습니다",
   CUSTOMER_CONFIRMATION_VIEWED: "고객이 확인 링크를 열었습니다",
-  CUSTOMER_CONFIRMATION_CONFIRMED: "고객 확인이 완료되었습니다"
+  CUSTOMER_CONFIRMATION_CONFIRMED: "고객 확인이 완료되었습니다",
+  CUSTOMER_CONFIRMATION_DISPATCHED: "고객 확인 링크가 자동 전달되었습니다",
+  CUSTOMER_CONFIRMATION_DELIVERY_FAILED: "고객 확인 링크 자동 전달이 실패했습니다",
+  CUSTOMER_CONFIRMATION_MANUAL_REQUIRED: "고객 확인 링크를 수동으로 전달해야 합니다"
 };
 
 const workflowSteps = [
@@ -492,6 +495,50 @@ function getConfirmationBadgeState(detail) {
       return { label: "만료/회수", tone: "tone-neutral" };
     default:
       return { label: latest.status, tone: "tone-neutral" };
+  }
+}
+
+function formatCustomerConfirmationDeliveryStatus(latest, detail) {
+  if (!latest) {
+    return detail?.customerPhoneNumber
+      ? "고객 번호는 저장돼 있지만 아직 링크를 발급하지 않았습니다."
+      : "고객 번호가 없어 지금은 링크 복사 후 수동 전달 기준으로 동작합니다.";
+  }
+
+  switch (latest.deliveryStatus) {
+    case "AUTO_DELIVERED":
+      return latest.deliveryChannel === "KAKAO_ALIMTALK"
+        ? "카카오 알림톡으로 자동 전달했습니다."
+        : "자동 전달이 완료됐습니다.";
+    case "AUTO_DELIVERED_FALLBACK_SMS":
+      return "카카오 대신 문자 fallback으로 자동 전달했습니다.";
+    case "MANUAL_REQUIRED_NO_PHONE":
+      return "고객 휴대폰 번호가 없어 수동 전달이 필요합니다.";
+    case "MANUAL_REQUIRED_CONFIG":
+      return "자동 전달 설정이 없어 링크를 복사해 수동 전달해야 합니다.";
+    case "AUTO_DELIVERY_FAILED":
+      return "자동 전달이 실패해 수동 전달이 필요합니다.";
+    default:
+      return "현재는 링크를 복사해 카카오톡 또는 문자로 수동 전달하고, 이후 열람/확인 상태를 이 카드에서 추적합니다.";
+  }
+}
+
+function buildCustomerConfirmationIssuedFeedback(delivery) {
+  switch (delivery?.status) {
+    case "AUTO_DELIVERED":
+      return delivery.channel === "KAKAO_ALIMTALK"
+        ? "고객 확인 링크를 발급했고 카카오 알림톡으로 자동 전달했습니다."
+        : "고객 확인 링크를 발급했고 자동 전달을 완료했습니다.";
+    case "AUTO_DELIVERED_FALLBACK_SMS":
+      return "고객 확인 링크를 발급했고 문자 fallback으로 자동 전달했습니다.";
+    case "MANUAL_REQUIRED_NO_PHONE":
+      return "고객 확인 링크를 발급했습니다. 고객 휴대폰 번호가 없어 링크를 직접 전달해 주세요.";
+    case "MANUAL_REQUIRED_CONFIG":
+      return "고객 확인 링크를 발급했습니다. 자동 전달 설정이 아직 없어 링크를 직접 전달해 주세요.";
+    case "AUTO_DELIVERY_FAILED":
+      return "고객 확인 링크를 발급했지만 자동 전달이 실패했습니다. 링크를 직접 전달해 주세요.";
+    default:
+      return "고객 확인 링크를 발급했습니다. 현재는 링크를 복사해 카카오톡 또는 문자로 전달해 주세요.";
   }
 }
 
@@ -1707,9 +1754,7 @@ function renderCustomerConfirmationState(detail) {
   }
 
   if (elements.customerConfirmDeliveryNote) {
-    elements.customerConfirmDeliveryNote.textContent = latest
-      ? "현재는 링크를 복사해 카카오톡 또는 문자로 수동 전달하고, 이후 열람/확인 상태를 이 카드에서 추적합니다."
-      : "현재는 링크를 복사해 수동 전달합니다. 운영 기준 채널은 카카오 알림톡 우선, 문자 fallback입니다.";
+    elements.customerConfirmDeliveryNote.textContent = formatCustomerConfirmationDeliveryStatus(latest, detail);
   }
 
   elements.customerConfirmUrl.value = state.latestConfirmationUrl || "";
@@ -2118,6 +2163,7 @@ elements.jobCaseForm.addEventListener("submit", async (event) => {
 
   const payload = {
     customerLabel: document.querySelector("#customerLabel").value,
+    customerPhoneNumber: document.querySelector("#customerPhoneNumber").value,
     contactMemo: document.querySelector("#contactMemo").value,
     siteLabel: document.querySelector("#siteLabel").value,
     originalQuoteAmount: Number(document.querySelector("#originalQuoteAmount").value)
@@ -2231,17 +2277,17 @@ elements.generateConfirmLink.addEventListener("click", async () => {
 
   setBusy(elements.generateConfirmLink, true, "발급 중...");
   try {
-    const payload = await request(`/api/v1/job-cases/${state.selectedJobCaseId}/customer-confirmation-links`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expiresInHours: 72 })
-    });
+      const payload = await request(`/api/v1/job-cases/${state.selectedJobCaseId}/customer-confirmation-links`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresInHours: 72 })
+      });
     state.latestConfirmationUrl = payload.confirmationUrl;
-    await loadJobCaseDetail(state.selectedJobCaseId);
-    state.latestConfirmationUrl = payload.confirmationUrl;
-    renderCustomerConfirmationState(state.selectedJobCaseDetail);
-    showFeedback(elements.detailFeedback, "고객 확인 링크를 발급했습니다. 현재는 링크를 복사해 카카오톡 또는 문자로 전달해 주세요.", "success");
-    scrollToSection("customer-confirm-card");
+      await loadJobCaseDetail(state.selectedJobCaseId);
+      state.latestConfirmationUrl = payload.confirmationUrl;
+      renderCustomerConfirmationState(state.selectedJobCaseDetail);
+      showFeedback(elements.detailFeedback, buildCustomerConfirmationIssuedFeedback(payload.delivery), "success");
+      scrollToSection("customer-confirm-card");
   } catch (error) {
     showFeedback(elements.detailFeedback, error.message, "error");
   } finally {

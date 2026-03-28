@@ -11,6 +11,10 @@
 - preview environment is live on `https://preview.damit.kr`
 - current public runtime is homelab + Cloudflare Tunnel + single-machine SQLite
 - real mail delivery via Resend is now working
+- customer confirmation delivery now has an automatic provider path in code:
+  - Kakao AlimTalk primary
+  - SMS fallback
+  - manual fallback when phone or provider config is missing
 - multi-user, audit-heavy, long-lived production still needs stronger data and recovery guarantees
 
 ## PM summary
@@ -218,6 +222,15 @@ Keep append-only traces for:
 - the previously blocking checksum mismatch on `0001_production_core` is now repaired and normalized
 - the public preview switch is now proven as well:
   - `preview.damit.kr` can run on Postgres
+
+## Latest PM customer notification automation note
+
+- customer confirmation issuance can now attempt real automatic delivery
+- the current delivery strategy is:
+  - Kakao AlimTalk first
+  - SMS fallback second
+  - manual follow-up when neither path is available
+- production trust still depends on live provider credentials, approved Kakao template mapping, and a preview-side provider smoke
   - `damit.kr` remains on SQLite during the switch
 - an extra stale `cloudflared` user process caused mixed routing until it was stopped
 - the remaining optional proof for this batch is rollback back to SQLite after preview testing

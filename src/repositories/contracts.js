@@ -12,6 +12,7 @@
   customerConfirmationRepository: [
     "createLink",
     "getLatestByJobCaseId",
+    "recordDeliveryResult",
     "getViewByToken",
     "acknowledge"
   ],

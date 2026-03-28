@@ -33,6 +33,8 @@ import {
 import { ensureAuthStorage } from "./contexts/auth/infrastructure/sqlite-auth-store.js";
 import { ensureCustomerConfirmationStorage } from "./contexts/customer-confirmation/infrastructure/sqlite-customer-confirmation-store.js";
 import { sendInvitationEmail, sendMagicLinkEmail } from "./mail-gateway.js";
+import { dispatchCustomerConfirmationNotification } from "./notifications/customer-confirmation-dispatch.js";
+import { normalizeCustomerPhoneNumber } from "./notifications/customer-phone.js";
 import { buildCustomerNotificationRuntime } from "./notifications/customer-notification-runtime.js";
 import { createRepositoryBundle } from "./repositories/createRepositoryBundle.js";
 import { normalizePathname, serveStaticRequest } from "./http/static-routes.js";
@@ -733,6 +735,7 @@ async function handleApiRequest(request, response, repositories) {
         visibility: businessContext.mode === "SESSION" && businessContext.role === "STAFF" ? "PRIVATE_ASSIGNED" : "TEAM_SHARED",
         updated_by_user_id: businessContext.userId,
         customer_label: payload.customerLabel.trim(),
+        customer_phone_number: normalizeCustomerPhoneNumber(payload.customerPhoneNumber),
         contact_memo: payload.contactMemo?.trim() || null,
         site_label: payload.siteLabel.trim(),
         original_quote_amount: Number(payload.originalQuoteAmount),
@@ -997,12 +1000,47 @@ async function handleApiRequest(request, response, repositories) {
       expiresAt: link.expiresAt
     }, businessContext.userId);
 
+    const confirmationUrl = buildPublicConfirmationUrl(request, link.token);
+    const delivery = await dispatchCustomerConfirmationNotification({
+      jobCase: detailSource.jobCase,
+      link,
+      confirmationUrl,
+      confirmedAmount: detailSource.jobCase.revised_quote_amount
+    });
+    const recordedDelivery = await repositories.customerConfirmationRepository.recordDeliveryResult({
+      linkId: link.id,
+      channel: delivery.channel,
+      provider: delivery.provider,
+      status: delivery.status,
+      destination: delivery.destination,
+      messageId: delivery.messageId,
+      errorCode: delivery.errorCode,
+      errorMessage: delivery.errorMessage,
+      requestedAt: link.createdAt,
+      completedAt: new Date().toISOString()
+    });
+
+    await appendCustomerConfirmationTimeline(
+      repositories,
+      recordedDelivery,
+      mapCustomerConfirmationDeliveryEventType(delivery.status),
+      summarizeCustomerConfirmationDelivery(delivery),
+      {
+        deliveryStatus: delivery.status,
+        deliveryChannel: delivery.channel,
+        deliveryProvider: delivery.provider,
+        deliveryDestinationMasked: delivery.destinationMasked
+      },
+      businessContext.userId
+    );
+
     json(response, 201, {
       id: link.id,
       status: link.status,
       expiresAt: link.expiresAt,
       createdAt: link.createdAt,
-      confirmationUrl: buildPublicConfirmationUrl(request, link.token)
+      confirmationUrl,
+      delivery
     });
     return;
   }
@@ -1123,6 +1161,7 @@ async function buildJobCaseDetailFromRepository(repositories, detailSource) {
   return {
     id: jobCase.id,
     customerLabel: jobCase.customer_label,
+    customerPhoneNumber: jobCase.customer_phone_number || null,
     contactMemo: jobCase.contact_memo,
     siteLabel: jobCase.site_label,
     currentStatus,
@@ -1302,6 +1341,35 @@ async function buildPublicCustomerConfirmationPayload(repositories, link) {
       photos: record.photos
     }))
   };
+}
+
+function mapCustomerConfirmationDeliveryEventType(status) {
+  switch (String(status || "").toUpperCase()) {
+    case "AUTO_DELIVERED":
+    case "AUTO_DELIVERED_FALLBACK_SMS":
+      return "CUSTOMER_CONFIRMATION_DISPATCHED";
+    case "AUTO_DELIVERY_FAILED":
+      return "CUSTOMER_CONFIRMATION_DELIVERY_FAILED";
+    default:
+      return "CUSTOMER_CONFIRMATION_MANUAL_REQUIRED";
+  }
+}
+
+function summarizeCustomerConfirmationDelivery(delivery) {
+  switch (String(delivery?.status || "").toUpperCase()) {
+    case "AUTO_DELIVERED":
+      return delivery.channel === "KAKAO_ALIMTALK" ? "고객 확인 링크 자동 전달 완료 · 카카오 알림톡" : "고객 확인 링크 자동 전달 완료";
+    case "AUTO_DELIVERED_FALLBACK_SMS":
+      return "고객 확인 링크 자동 전달 완료 · 문자 fallback";
+    case "MANUAL_REQUIRED_NO_PHONE":
+      return "고객 휴대폰 번호가 없어 수동 전달 필요";
+    case "MANUAL_REQUIRED_CONFIG":
+      return "자동 전달 설정이 없어 수동 전달 필요";
+    case "AUTO_DELIVERY_FAILED":
+      return "고객 확인 링크 자동 전달 실패";
+    default:
+      return "고객 확인 링크 전달 상태 확인 필요";
+  }
 }
 
 async function appendCustomerConfirmationTimeline(repositories, link, eventType, summary, payloadJson, actorUserId = null) {

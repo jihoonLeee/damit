@@ -76,6 +76,7 @@ async function createConfirmationToken(seed) {
     headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       customerLabel: `Customer ${seed}`,
+      customerPhoneNumber: "010-1111-2222",
       contactMemo: `Memo ${seed}`,
       siteLabel: `Site ${seed}`,
       originalQuoteAmount: 250000
@@ -139,6 +140,7 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
     headers: writeSessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       customerLabel: "송파 힐스테이트 1203호",
+      customerPhoneNumber: "010-1234-5678",
       contactMemo: "당근 문의 고객",
       siteLabel: "송파 힐스테이트 1203호",
       originalQuoteAmount: 250000
@@ -176,6 +178,7 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
   assert.equal(createLinkResponse.status, 201);
   const createdLink = await createLinkResponse.json();
   assert.match(createdLink.confirmationUrl, /\/confirm\//);
+  assert.equal(createdLink.delivery.status, "MANUAL_REQUIRED_CONFIG");
   const confirmUrl = new URL(createdLink.confirmationUrl, baseUrl);
   const token = decodeURIComponent(confirmUrl.pathname.replace(/^\/confirm\//, ""));
 
@@ -201,7 +204,9 @@ test("customer confirmation link can be issued, viewed, acknowledged, and expose
   });
   assert.equal(detailResponse.status, 200);
   const detail = await detailResponse.json();
+  assert.equal(detail.customerPhoneNumber, "01012345678");
   assert.equal(detail.latestCustomerConfirmationLink.status, "CONFIRMED");
+  assert.equal(detail.latestCustomerConfirmationLink.deliveryStatus, "MANUAL_REQUIRED_CONFIG");
   assert.ok(detail.latestCustomerConfirmationLink.confirmedAt);
 
   const confirmPageResponse = await fetch(`${baseUrl}/confirm/${encodeURIComponent(token)}`);

@@ -41,6 +41,10 @@
 - current DB mode: Postgres rehearsal on preview
 - root still remains on SQLite
 - current mail mode: `RESEND`
+- current customer confirmation delivery mode:
+  - Kakao AlimTalk primary when provider/template config is present
+  - SMS fallback when Kakao send fails and SMS sender config is present
+  - manual follow-up when phone or provider config is missing
 - current auth mode: `SameSite=Strict` session cookies, refresh CSRF required, trusted-origin enforcement ON
 
 ### Production
@@ -49,6 +53,9 @@
 - current DB mode: SQLite pilot
 - next DB target: external Postgres after preview rehearsal
 - current mail mode: `MAIL_PROVIDER=RESEND`
+- current customer confirmation delivery mode:
+  - automated delivery foundation is live in code
+  - live trust still depends on `SOLAPI_*` credentials and Kakao template parity
 - current auth mode: `AUTH_DEBUG_LINKS=false`, `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
 
 ## Auth hardening defaults
@@ -258,6 +265,27 @@ Expected local result:
 3. set `MAIL_FROM` to a verified sending domain
 4. set `APP_BASE_URL` to the real service origin
 5. keep `AUTH_DEBUG_LINKS=false`
+
+## Customer confirmation auto-delivery cutover
+
+1. set `KAKAO_BIZMESSAGE_PROVIDER=SOLAPI`
+2. set `SMS_PROVIDER=SOLAPI`
+3. set `SOLAPI_API_KEY`
+4. set `SOLAPI_API_SECRET`
+5. set `SOLAPI_SENDER_NUMBER`
+6. set `SOLAPI_KAKAO_PFID`
+7. set `SOLAPI_KAKAO_TEMPLATE_ID`
+8. confirm the Kakao template variables match the app contract:
+   - `#{서비스명}`
+   - `#{고객명}`
+   - `#{현장명}`
+   - `#{확인링크}`
+   - `#{만료시각}`
+   - `#{확정금액}`
+9. issue a customer confirmation link on preview and confirm one of:
+   - `AUTO_DELIVERED`
+   - `AUTO_DELIVERED_FALLBACK_SMS`
+10. confirm `/app/confirm`, `/ops`, and `/account` read the delivery result correctly before trusting the path on root
 6. keep `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
 7. optionally add `TRUSTED_ORIGINS` only when more than one trusted browser origin is intentionally allowed
 8. verify login challenge delivery from `/login` without relying on any debug link

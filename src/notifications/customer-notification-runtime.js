@@ -15,13 +15,43 @@ export function formatCustomerNotificationChannelLabel(value) {
   }
 }
 
+export function buildCustomerNotificationProviderState(runtimeConfig) {
+  const kakaoProvider = normalizeChannel(runtimeConfig.kakaoBizMessageProvider);
+  const smsProvider = normalizeChannel(runtimeConfig.smsProvider);
+  const solapiCredentialsConfigured = Boolean(
+    String(runtimeConfig.solapiApiKey || "").trim()
+    && String(runtimeConfig.solapiApiSecret || "").trim()
+    && String(runtimeConfig.solapiSenderNumber || "").trim()
+  );
+  const solapiKakaoTemplateConfigured = Boolean(
+    String(runtimeConfig.solapiKakaoPfId || "").trim()
+    && String(runtimeConfig.solapiKakaoTemplateId || "").trim()
+  );
+
+  const kakaoConfigured = kakaoProvider === "SOLAPI"
+    ? solapiCredentialsConfigured && solapiKakaoTemplateConfigured
+    : Boolean(kakaoProvider);
+  const smsConfigured = smsProvider === "SOLAPI"
+    ? solapiCredentialsConfigured
+    : Boolean(smsProvider);
+
+  return {
+    kakaoProvider,
+    smsProvider,
+    solapiCredentialsConfigured,
+    solapiKakaoTemplateConfigured,
+    kakaoConfigured,
+    smsConfigured
+  };
+}
+
 export function buildCustomerNotificationRuntime(runtimeConfig) {
   const primaryChannel = normalizeChannel(runtimeConfig.customerNotificationPrimary, "MANUAL_COPY");
   const fallbackChannel = normalizeChannel(runtimeConfig.customerNotificationFallback);
+  const providerState = buildCustomerNotificationProviderState(runtimeConfig);
   const kakaoProvider = String(runtimeConfig.kakaoBizMessageProvider || "").trim();
   const smsProvider = String(runtimeConfig.smsProvider || "").trim();
-  const kakaoConfigured = Boolean(kakaoProvider);
-  const smsConfigured = Boolean(smsProvider);
+  const { kakaoConfigured, smsConfigured } = providerState;
 
   let operationalReadiness = "MANUAL_ONLY";
   if (primaryChannel === "KAKAO_ALIMTALK" && !kakaoConfigured) {
@@ -44,6 +74,8 @@ export function buildCustomerNotificationRuntime(runtimeConfig) {
     kakaoConfigured,
     smsProvider: smsProvider || null,
     smsConfigured,
+    solapiCredentialsConfigured: providerState.solapiCredentialsConfigured,
+    solapiKakaoTemplateConfigured: providerState.solapiKakaoTemplateConfigured,
     customerNotificationOperationalReadiness: operationalReadiness
   };
 }

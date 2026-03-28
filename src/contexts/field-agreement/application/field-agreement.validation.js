@@ -1,5 +1,6 @@
 import { HttpError } from "../../../http.js";
 import { AGREEMENT_CHANNELS, AGREEMENT_STATUSES, LIST_STATUSES, PRIMARY_REASONS, SECONDARY_REASONS } from "../domain/field-agreement.domain.js";
+import { isValidCustomerPhoneNumber, normalizeCustomerPhoneNumber } from "../../../notifications/customer-phone.js";
 
 export function validateFieldRecordInput(fields, files) {
   if (!files || files.length === 0) {
@@ -51,6 +52,13 @@ export function validateJobCasePayload(payload) {
   if (!Number.isInteger(amount) || amount < 0) {
     throw new HttpError(422, "VALIDATION_ERROR", "원래 견적 금액을 다시 확인해 주세요.", {
       originalQuoteAmount: "INVALID"
+    });
+  }
+
+  const normalizedPhone = normalizeCustomerPhoneNumber(payload.customerPhoneNumber);
+  if (payload.customerPhoneNumber != null && String(payload.customerPhoneNumber).trim() !== "" && !isValidCustomerPhoneNumber(normalizedPhone)) {
+    throw new HttpError(422, "VALIDATION_ERROR", "고객 휴대폰 번호를 다시 확인해 주세요.", {
+      customerPhoneNumber: "INVALID"
     });
   }
 }

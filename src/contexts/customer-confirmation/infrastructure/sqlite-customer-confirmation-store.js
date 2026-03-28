@@ -46,10 +46,26 @@ function mapLink(row) {
         requestIp: row.request_ip,
         userAgent: row.user_agent,
         revokedAt: row.revoked_at,
+        deliveryChannel: row.delivery_channel || null,
+        deliveryProvider: row.delivery_provider || null,
+        deliveryStatus: row.delivery_status || null,
+        deliveryDestination: row.delivery_destination || null,
+        deliveryRequestedAt: row.delivery_requested_at || null,
+        deliveryCompletedAt: row.delivery_completed_at || null,
+        deliveryMessageId: row.delivery_message_id || null,
+        deliveryErrorCode: row.delivery_error_code || null,
+        deliveryErrorMessage: row.delivery_error_message || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       }
     : null;
+}
+
+function ensureColumn(database, tableName, columnName, definition) {
+  const columns = database.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (!columns.some((column) => column.name === columnName)) {
+    database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
 }
 
 function ensureSchema(database) {
@@ -71,6 +87,15 @@ function ensureSchema(database) {
       request_ip TEXT,
       user_agent TEXT,
       revoked_at TEXT,
+      delivery_channel TEXT,
+      delivery_provider TEXT,
+      delivery_status TEXT,
+      delivery_destination TEXT,
+      delivery_requested_at TEXT,
+      delivery_completed_at TEXT,
+      delivery_message_id TEXT,
+      delivery_error_code TEXT,
+      delivery_error_message TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -94,6 +119,16 @@ function ensureSchema(database) {
     CREATE INDEX IF NOT EXISTS idx_customer_confirmation_events_link_created
       ON customer_confirmation_events (link_id, created_at ASC);
   `);
+
+  ensureColumn(database, "customer_confirmation_links", "delivery_channel", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_provider", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_status", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_destination", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_requested_at", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_completed_at", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_message_id", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_error_code", "TEXT");
+  ensureColumn(database, "customer_confirmation_links", "delivery_error_message", "TEXT");
 }
 
 export async function ensureCustomerConfirmationStorage() {
@@ -203,9 +238,12 @@ export async function createCustomerConfirmationLink({ jobCaseId, companyId, cre
     database.prepare(`
       INSERT INTO customer_confirmation_links (
         id, job_case_id, company_id, created_by_user_id, token_hash,
-        status, expires_at, viewed_at, confirmed_at, confirmation_note,
-        request_ip, user_agent, revoked_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      status, expires_at, viewed_at, confirmed_at, confirmation_note,
+      request_ip, user_agent, revoked_at,
+      delivery_channel, delivery_provider, delivery_status, delivery_destination,
+      delivery_requested_at, delivery_completed_at, delivery_message_id, delivery_error_code, delivery_error_message,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       link.id,
       link.jobCaseId,
@@ -220,6 +258,15 @@ export async function createCustomerConfirmationLink({ jobCaseId, companyId, cre
       link.requestIp,
       link.userAgent,
       link.revokedAt,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
       link.createdAt,
       link.updatedAt
     );
@@ -245,6 +292,15 @@ export async function createCustomerConfirmationLink({ jobCaseId, companyId, cre
         request_ip: link.requestIp,
         user_agent: link.userAgent,
         revoked_at: link.revokedAt,
+        delivery_channel: null,
+        delivery_provider: null,
+        delivery_status: null,
+        delivery_destination: null,
+        delivery_requested_at: null,
+        delivery_completed_at: null,
+        delivery_message_id: null,
+        delivery_error_code: null,
+        delivery_error_message: null,
         created_at: link.createdAt,
         updated_at: link.updatedAt
       }),
@@ -329,5 +385,52 @@ export async function acknowledgeCustomerConfirmation({ token, note, requestIp, 
     });
 
     return mapLink(getLinkRowByTokenHash(database, sha256(token)));
+  });
+}
+
+export async function recordCustomerConfirmationDelivery({
+  linkId,
+  channel,
+  provider,
+  status,
+  destination,
+  messageId,
+  errorCode,
+  errorMessage,
+  requestedAt,
+  completedAt
+}) {
+  await ensureCustomerConfirmationStorage();
+  return transaction((database) => {
+    database.prepare(`
+      UPDATE customer_confirmation_links
+      SET delivery_channel = ?,
+          delivery_provider = ?,
+          delivery_status = ?,
+          delivery_destination = ?,
+          delivery_requested_at = ?,
+          delivery_completed_at = ?,
+          delivery_message_id = ?,
+          delivery_error_code = ?,
+          delivery_error_message = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      channel || null,
+      provider || null,
+      status || null,
+      destination || null,
+      requestedAt || nowIso(),
+      completedAt || nowIso(),
+      messageId || null,
+      errorCode || null,
+      errorMessage || null,
+      nowIso(),
+      linkId
+    );
+
+    return mapLink(
+      database.prepare(`SELECT * FROM customer_confirmation_links WHERE id = ? LIMIT 1`).get(linkId)
+    );
   });
 }

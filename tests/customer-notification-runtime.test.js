@@ -18,12 +18,17 @@ test("customer notification runtime defaults to kakao-first readiness warning wi
   assert.equal(runtime.customerNotificationOperationalReadiness, "KAKAO_CONFIG_REQUIRED");
 });
 
-test("customer notification runtime becomes ready when primary and fallback providers are configured", () => {
+test("customer notification runtime becomes ready when solapi credentials and template are configured", () => {
   const runtime = buildCustomerNotificationRuntime({
     customerNotificationPrimary: "KAKAO_ALIMTALK",
     customerNotificationFallback: "SMS",
-    kakaoBizMessageProvider: "solapi-bizmessage",
-    smsProvider: "solapi-sms"
+    kakaoBizMessageProvider: "SOLAPI",
+    smsProvider: "SOLAPI",
+    solapiApiKey: "key",
+    solapiApiSecret: "secret",
+    solapiSenderNumber: "029302266",
+    solapiKakaoPfId: "KA01PF00000000000000000000000000",
+    solapiKakaoTemplateId: "KA01TP00000000000000000000000000"
   });
 
   assert.equal(runtime.kakaoConfigured, true);

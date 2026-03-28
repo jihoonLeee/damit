@@ -54,6 +54,7 @@ function ensureSchema(database) {
       id TEXT PRIMARY KEY,
       owner_id TEXT NOT NULL,
       customer_label TEXT NOT NULL,
+      customer_phone_number TEXT,
       contact_memo TEXT,
       site_label TEXT NOT NULL,
       original_quote_amount INTEGER NOT NULL,
@@ -143,6 +144,7 @@ function ensureSchema(database) {
   ensureColumn(database, "job_cases", "assigned_user_id", "TEXT");
   ensureColumn(database, "job_cases", "visibility", "TEXT NOT NULL DEFAULT 'PRIVATE_ASSIGNED'");
   ensureColumn(database, "job_cases", "updated_by_user_id", "TEXT");
+  ensureColumn(database, "job_cases", "customer_phone_number", "TEXT");
 
   ensureColumn(database, "field_records", "company_id", "TEXT");
   ensureColumn(database, "field_records", "created_by_user_id", "TEXT");
@@ -251,14 +253,14 @@ function replaceAllRows(database, snapshot) {
       DELETE FROM job_cases;
     `);
 
-    const insertJobCase = database.prepare(`
-      INSERT INTO job_cases (
-        id, owner_id, customer_label, contact_memo, site_label,
-        original_quote_amount, revised_quote_amount, quote_delta_amount,
-        current_status, created_at, updated_at,
-        company_id, created_by_user_id, assigned_user_id, visibility, updated_by_user_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      const insertJobCase = database.prepare(`
+        INSERT INTO job_cases (
+          id, owner_id, customer_label, customer_phone_number, contact_memo, site_label,
+          original_quote_amount, revised_quote_amount, quote_delta_amount,
+          current_status, created_at, updated_at,
+          company_id, created_by_user_id, assigned_user_id, visibility, updated_by_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
     const insertFieldRecord = database.prepare(`
       INSERT INTO field_records (
         id, owner_id, job_case_id, primary_reason, secondary_reason,
@@ -298,14 +300,15 @@ function replaceAllRows(database, snapshot) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    for (const item of snapshot.jobCases || []) {
-      insertJobCase.run(
-        item.id,
-        item.owner_id,
-        item.customer_label,
-        item.contact_memo ?? null,
-        item.site_label,
-        item.original_quote_amount,
+      for (const item of snapshot.jobCases || []) {
+        insertJobCase.run(
+          item.id,
+          item.owner_id,
+          item.customer_label,
+          item.customer_phone_number ?? null,
+          item.contact_memo ?? null,
+          item.site_label,
+          item.original_quote_amount,
         item.revised_quote_amount ?? null,
         item.quote_delta_amount ?? null,
         item.current_status,
@@ -695,15 +698,15 @@ const DATA_EXPLORER_DATASETS = {
     timestampKeys: ["confirmed_at", "created_at"],
     columns: ["id", "job_case_id", "status", "confirmation_channel", "confirmed_amount", "confirmed_at", "created_at"]
   },
-  customerConfirmations: {
-    key: "customerConfirmations",
-    tableName: "customer_confirmation_links",
-    label: "Customer Confirmations",
-    description: "Issued customer confirmation links and recent status.",
-    orderBy: "COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC",
-    timestampKeys: ["updated_at", "confirmed_at", "viewed_at", "created_at"],
-    columns: ["id", "job_case_id", "status", "expires_at", "viewed_at", "confirmed_at", "updated_at"]
-  },
+    customerConfirmations: {
+      key: "customerConfirmations",
+      tableName: "customer_confirmation_links",
+      label: "Customer Confirmations",
+      description: "Issued customer confirmation links and recent status.",
+      orderBy: "COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC",
+      timestampKeys: ["updated_at", "confirmed_at", "viewed_at", "created_at"],
+      columns: ["id", "job_case_id", "status", "delivery_status", "delivery_channel", "delivery_provider", "delivery_destination", "expires_at", "viewed_at", "confirmed_at", "updated_at"]
+    },
   timelineEvents: {
     key: "timelineEvents",
     tableName: "timeline_events",

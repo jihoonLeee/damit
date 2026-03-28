@@ -246,16 +246,16 @@ const POSTGRES_DATA_EXPLORER_DATASETS = {
     timestampKey: "confirmed_at",
     columns: ["id", "job_case_id", "status", "confirmation_channel", "confirmed_amount", "confirmed_at", "created_at"]
   },
-  customerConfirmations: {
-    key: "customerConfirmations",
-    label: "Customer Confirmations",
-    description: "Issued customer confirmation links and recent status.",
-    tableName: "customer_confirmation_links",
-    countSql: "SELECT COUNT(*)::int AS count FROM customer_confirmation_links",
-    rowSql: "SELECT id, job_case_id, status, expires_at, viewed_at, confirmed_at, updated_at FROM customer_confirmation_links ORDER BY COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC LIMIT $1",
-    timestampKey: "updated_at",
-    columns: ["id", "job_case_id", "status", "expires_at", "viewed_at", "confirmed_at", "updated_at"]
-  },
+    customerConfirmations: {
+      key: "customerConfirmations",
+      label: "Customer Confirmations",
+      description: "Issued customer confirmation links and recent status.",
+      tableName: "customer_confirmation_links",
+      countSql: "SELECT COUNT(*)::int AS count FROM customer_confirmation_links",
+      rowSql: "SELECT id, job_case_id, status, delivery_status, delivery_channel, delivery_provider, delivery_destination, expires_at, viewed_at, confirmed_at, updated_at FROM customer_confirmation_links ORDER BY COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC LIMIT $1",
+      timestampKey: "updated_at",
+      columns: ["id", "job_case_id", "status", "delivery_status", "delivery_channel", "delivery_provider", "delivery_destination", "expires_at", "viewed_at", "confirmed_at", "updated_at"]
+    },
   timelineEvents: {
     key: "timelineEvents",
     label: "Timeline",
@@ -639,6 +639,7 @@ function toJobCaseListItem(row) {
   return {
     id: normalized.id,
     customerLabel: normalized.customer_label,
+    customerPhoneNumber: normalized.customer_phone_number || null,
     siteLabel: normalized.site_label,
     originalQuoteAmount: normalized.original_quote_amount,
     revisedQuoteAmount: normalized.revised_quote_amount,
@@ -719,6 +720,15 @@ function toCustomerConfirmationLink(row, token) {
     requestIp: normalized.request_ip || null,
     userAgent: normalized.user_agent || null,
     revokedAt: normalized.revoked_at || null,
+    deliveryChannel: normalized.delivery_channel || null,
+    deliveryProvider: normalized.delivery_provider || null,
+    deliveryStatus: normalized.delivery_status || null,
+    deliveryDestination: normalized.delivery_destination || null,
+    deliveryRequestedAt: normalized.delivery_requested_at || null,
+    deliveryCompletedAt: normalized.delivery_completed_at || null,
+    deliveryMessageId: normalized.delivery_message_id || null,
+    deliveryErrorCode: normalized.delivery_error_code || null,
+    deliveryErrorMessage: normalized.delivery_error_message || null,
     createdAt: normalized.created_at,
     updatedAt: normalized.updated_at
   };
@@ -1289,7 +1299,7 @@ export function createPostgresRepositoryBundle({
           pool.query("SELECT id, customer_label, site_label, current_status, revised_quote_amount, updated_at, created_at FROM job_cases ORDER BY updated_at DESC"),
           pool.query("SELECT id, status, confirmed_at, created_at FROM agreement_records ORDER BY COALESCE(confirmed_at, created_at) DESC"),
           pool.query("SELECT id, job_case_id, body, updated_at, created_at FROM message_drafts ORDER BY COALESCE(updated_at, created_at) DESC"),
-          pool.query("SELECT id, job_case_id, status, expires_at, viewed_at, confirmed_at, created_at, updated_at FROM customer_confirmation_links ORDER BY COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC"),
+            pool.query("SELECT id, job_case_id, status, delivery_status, delivery_channel, delivery_provider, delivery_destination, expires_at, viewed_at, confirmed_at, created_at, updated_at FROM customer_confirmation_links ORDER BY COALESCE(updated_at, confirmed_at, viewed_at, created_at) DESC"),
           pool.query("SELECT id, job_case_id, event_type, summary, created_at FROM timeline_events ORDER BY created_at DESC"),
           pool.query("SELECT id, email, status, delivery_provider, delivery_status, expires_at, created_at FROM login_challenges ORDER BY created_at DESC"),
           pool.query("SELECT id, user_id, company_id, last_seen_at, expires_at, revoked_at, created_at FROM sessions ORDER BY COALESCE(last_seen_at, created_at) DESC")
@@ -1414,22 +1424,23 @@ export function createPostgresRepositoryBundle({
           `
             INSERT INTO job_cases (
               id, company_id, owner_id, created_by_user_id, assigned_user_id, updated_by_user_id,
-              visibility, customer_label, contact_memo, site_label, original_quote_amount,
+              visibility, customer_label, customer_phone_number, contact_memo, site_label, original_quote_amount,
               revised_quote_amount, quote_delta_amount, current_status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-            RETURNING id, current_status, original_quote_amount, revised_quote_amount, quote_delta_amount, created_at, visibility
-          `,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            RETURNING id, customer_phone_number, current_status, original_quote_amount, revised_quote_amount, quote_delta_amount, created_at, visibility
+            `,
           [
             jobCase.id,
             jobCase.company_id,
             jobCase.owner_id || null,
             jobCase.created_by_user_id,
             jobCase.assigned_user_id || null,
-            jobCase.updated_by_user_id || null,
-            jobCase.visibility || "PRIVATE_ASSIGNED",
-            jobCase.customer_label,
-            jobCase.contact_memo || null,
-            jobCase.site_label,
+              jobCase.updated_by_user_id || null,
+              jobCase.visibility || "PRIVATE_ASSIGNED",
+              jobCase.customer_label,
+              jobCase.customer_phone_number || null,
+              jobCase.contact_memo || null,
+              jobCase.site_label,
             jobCase.original_quote_amount,
             jobCase.revised_quote_amount ?? null,
             jobCase.quote_delta_amount ?? null,
@@ -1440,9 +1451,10 @@ export function createPostgresRepositoryBundle({
         );
 
         const saved = normalizeRow(result.rows[0]);
-        return {
-          id: saved.id,
-          currentStatus: saved.current_status,
+          return {
+            id: saved.id,
+            customerPhoneNumber: saved.customer_phone_number || null,
+            currentStatus: saved.current_status,
           originalQuoteAmount: saved.original_quote_amount,
           revisedQuoteAmount: saved.revised_quote_amount ?? null,
           quoteDeltaAmount: saved.quote_delta_amount ?? null,
@@ -1779,11 +1791,14 @@ export function createPostgresRepositoryBundle({
             `
               INSERT INTO customer_confirmation_links (
                 id, company_id, job_case_id, token_hash, status, expires_at, revoked_at,
-                created_by_user_id, viewed_at, confirmed_at, confirmation_note, request_ip, user_agent, created_at, updated_at
-              ) VALUES ($1, $2, $3, $4, 'ISSUED', $5, NULL, $6, NULL, NULL, NULL, NULL, NULL, $7, $7)
-            `,
-            [linkId, resolvedCompanyId, jobCaseId, tokenHash, expiresAt, createdByUserId || null, timestamp]
-          );
+                created_by_user_id, viewed_at, confirmed_at, confirmation_note, request_ip, user_agent,
+                delivery_channel, delivery_provider, delivery_status, delivery_destination,
+                delivery_requested_at, delivery_completed_at, delivery_message_id, delivery_error_code, delivery_error_message,
+                created_at, updated_at
+              ) VALUES ($1, $2, $3, $4, 'ISSUED', $5, NULL, $6, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $7, $7)
+              `,
+              [linkId, resolvedCompanyId, jobCaseId, tokenHash, expiresAt, createdByUserId || null, timestamp]
+            );
 
           await appendCustomerConfirmationEvent(client, {
             linkId,
@@ -1800,29 +1815,83 @@ export function createPostgresRepositoryBundle({
             expires_at: expiresAt,
             revoked_at: null,
             viewed_at: null,
-            confirmed_at: null,
-            confirmation_note: null,
-            request_ip: null,
-            user_agent: null,
-            created_at: timestamp,
-            updated_at: timestamp
-          }, token);
+              confirmed_at: null,
+              confirmation_note: null,
+              request_ip: null,
+              user_agent: null,
+              delivery_channel: null,
+              delivery_provider: null,
+              delivery_status: null,
+              delivery_destination: null,
+              delivery_requested_at: null,
+              delivery_completed_at: null,
+              delivery_message_id: null,
+              delivery_error_code: null,
+              delivery_error_message: null,
+              created_at: timestamp,
+              updated_at: timestamp
+            }, token);
         });
       },
-      getLatestByJobCaseId: async (jobCaseId) => {
-        const result = await pool.query(
-          `
-            SELECT *
-            FROM customer_confirmation_links
+        getLatestByJobCaseId: async (jobCaseId) => {
+          const result = await pool.query(
+            `
+              SELECT *
+              FROM customer_confirmation_links
             WHERE job_case_id = $1
             ORDER BY created_at DESC
             LIMIT 1
           `,
           [jobCaseId]
-        );
-        return toCustomerConfirmationLink(result.rows[0] || null);
-      },
-      getViewByToken: async ({ token, requestIp, userAgent }) => {
+          );
+          return toCustomerConfirmationLink(result.rows[0] || null);
+        },
+        recordDeliveryResult: async ({
+          linkId,
+          channel,
+          provider,
+          status,
+          destination,
+          messageId,
+          errorCode,
+          errorMessage,
+          requestedAt,
+          completedAt
+        }) => {
+          const timestamp = new Date().toISOString();
+          const result = await pool.query(
+            `
+              UPDATE customer_confirmation_links
+              SET delivery_channel = $2,
+                  delivery_provider = $3,
+                  delivery_status = $4,
+                  delivery_destination = $5,
+                  delivery_requested_at = $6,
+                  delivery_completed_at = $7,
+                  delivery_message_id = $8,
+                  delivery_error_code = $9,
+                  delivery_error_message = $10,
+                  updated_at = $11
+              WHERE id = $1
+              RETURNING *
+            `,
+            [
+              linkId,
+              channel || null,
+              provider || null,
+              status || null,
+              destination || null,
+              requestedAt || timestamp,
+              completedAt || timestamp,
+              messageId || null,
+              errorCode || null,
+              errorMessage || null,
+              timestamp
+            ]
+          );
+          return toCustomerConfirmationLink(result.rows[0] || null);
+        },
+        getViewByToken: async ({ token, requestIp, userAgent }) => {
         return withTransaction(pool, async (client) => {
           const row = await getCustomerConfirmationRowForUpdate(client, sha256(token));
           await assertAvailableCustomerConfirmation(client, row, 'CUSTOMER_CONFIRMATION');

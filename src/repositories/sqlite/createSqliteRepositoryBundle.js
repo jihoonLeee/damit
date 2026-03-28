@@ -23,7 +23,8 @@ import {
   acknowledgeCustomerConfirmation,
   createCustomerConfirmationLink,
   getCustomerConfirmationView,
-  getLatestCustomerConfirmationLink
+  getLatestCustomerConfirmationLink,
+  recordCustomerConfirmationDelivery
 } from "../../contexts/customer-confirmation/infrastructure/sqlite-customer-confirmation-store.js";
 
 
@@ -77,6 +78,7 @@ function toJobCaseListItem(jobCase, fieldRecords, agreementRecords) {
   return {
     id: jobCase.id,
     customerLabel: jobCase.customer_label,
+    customerPhoneNumber: jobCase.customer_phone_number || null,
     siteLabel: jobCase.site_label,
     originalQuoteAmount: jobCase.original_quote_amount,
     revisedQuoteAmount: jobCase.revised_quote_amount,
@@ -216,16 +218,16 @@ export function createSqliteRepositoryBundle() {
             contact_memo: ""
           }, normalizedQuery));
 
-        return sortByUpdatedAtDesc(items);
-      },
-      getDetailById: async (jobCaseId, scope = {}) => {
+      return sortByUpdatedAtDesc(items);
+    },
+    getDetailById: async (jobCaseId, scope = {}) => {
         const db = await readDb();
         const jobCase = db.jobCases.find((item) => item.id === jobCaseId) || null;
         if (!jobCase || !canReadJobCase(jobCase, scope)) {
           return null;
         }
-        return {
-          jobCase,
+      return {
+        jobCase,
           fieldRecords: db.fieldRecords.filter((item) => item.job_case_id === jobCaseId),
           agreements: db.agreementRecords.filter((item) => item.job_case_id === jobCaseId),
           drafts: db.messageDrafts.filter((item) => item.job_case_id === jobCaseId),
@@ -238,6 +240,7 @@ export function createSqliteRepositoryBundle() {
           db.jobCases.push({ ...jobCase });
           return {
             id: jobCase.id,
+            customerPhoneNumber: jobCase.customer_phone_number ?? null,
             currentStatus: jobCase.current_status,
             originalQuoteAmount: jobCase.original_quote_amount,
             revisedQuoteAmount: jobCase.revised_quote_amount ?? null,
@@ -461,6 +464,7 @@ export function createSqliteRepositoryBundle() {
         });
       },
       getLatestByJobCaseId: async (jobCaseId) => getLatestCustomerConfirmationLink(jobCaseId),
+      recordDeliveryResult: async (input) => recordCustomerConfirmationDelivery(input),
       getViewByToken: async ({ token, requestIp, userAgent }) => {
         return getCustomerConfirmationView({ token, requestIp, userAgent });
       },
