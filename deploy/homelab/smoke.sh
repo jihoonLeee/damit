@@ -34,9 +34,29 @@ fi
 APP_PORT="${APP_PORT:-3000}"
 APP_URL="${APP_URL:-http://127.0.0.1:${APP_PORT}}"
 HEALTH_URL="$APP_URL/api/v1/health"
+HEALTH_WAIT_SECONDS="${HEALTH_WAIT_SECONDS:-60}"
+HEALTH_RETRY_INTERVAL_SECONDS="${HEALTH_RETRY_INTERVAL_SECONDS:-2}"
 
 echo "Checking $HEALTH_URL"
-HEALTH_BODY="$(curl --fail --silent --show-error "$HEALTH_URL")"
+HEALTH_BODY=""
+HEALTH_ERROR=""
+deadline=$((SECONDS + HEALTH_WAIT_SECONDS))
+
+while true; do
+  if HEALTH_BODY="$(curl --fail --silent --show-error "$HEALTH_URL" 2>&1)"; then
+    break
+  fi
+
+  HEALTH_ERROR="$HEALTH_BODY"
+  if (( SECONDS >= deadline )); then
+    echo "$HEALTH_ERROR"
+    exit 1
+  fi
+
+  echo "Health endpoint not ready yet. Retrying in ${HEALTH_RETRY_INTERVAL_SECONDS}s..."
+  sleep "$HEALTH_RETRY_INTERVAL_SECONDS"
+done
+
 echo "$HEALTH_BODY"
 
 if [[ -n "$EXPECTED_STORAGE_ENGINE" ]]; then
