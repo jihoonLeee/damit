@@ -80,7 +80,7 @@ async function requestForm(baseUrl, pathname, formData, { headers = {}, cookie =
 }
 
 const rootDir = path.resolve(import.meta.dirname, "..");
-const envFile = readArg("env-file", path.join(rootDir, ".env.production.local"));
+const envFile = readArg("config-env-file", readArg("env-file", path.join(rootDir, ".env.production.local")));
 loadEnvFile(envFile, { override: true });
 
 const baseUrl = readArg("base-url", process.env.APP_BASE_URL || "https://preview.damit.kr");

@@ -29,7 +29,7 @@
     "smoke:pg:production-local": "node scripts/postgres-production-runtime-smoke.mjs",
     "qa:preview:bootstrap": "node scripts/preview-qa-session-bootstrap.mjs",
     "qa:preview:bootstrap:production-local": "node scripts/preview-qa-session-bootstrap.mjs --env-file=.env.production.local --base-url=https://preview.damit.kr",
-    "smoke:customer-notification:preview:production-local": "node scripts/customer-notification-provider-smoke.mjs --env-file=.env.production.local --base-url=https://preview.damit.kr",
+    "smoke:customer-notification:preview:production-local": "node scripts/customer-notification-provider-smoke.mjs --config-env-file=.env.production.local --base-url=https://preview.damit.kr",
     "env:check:staging": "node scripts/runtime-env-check.mjs --profile=staging",
     "env:check:production": "node scripts/runtime-env-check.mjs --profile=production",
     "smoke:mail:production-local": "node scripts/mail-login-smoke.mjs"
