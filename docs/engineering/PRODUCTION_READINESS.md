@@ -231,6 +231,7 @@ Keep append-only traces for:
   - SMS fallback second
   - manual follow-up when neither path is available
 - production trust still depends on live provider credentials, approved Kakao template mapping, and a preview-side provider smoke
+- a dedicated preview provider smoke command now exists so this proof can be repeated before broader rollout claims
   - `damit.kr` remains on SQLite during the switch
 - an extra stale `cloudflared` user process caused mixed routing until it was stopped
 - the remaining optional proof for this batch is rollback back to SQLite after preview testing

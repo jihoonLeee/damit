@@ -19,6 +19,7 @@
 - staging env check: `npm run env:check:staging`
 - production env check: `npm run env:check:production`
 - real mail smoke: `npm run smoke:mail:production-local`
+- preview customer notification provider smoke: `npm run smoke:customer-notification:preview:production-local -- --phone=010...`
 - preview Postgres rehearsal: `bash deploy/homelab/rehearse-postgres-cutover.sh`
 - preview Postgres smoke: `bash deploy/homelab/smoke-postgres-runtime.sh`
 - preview Postgres refresh after normal deploy: `bash deploy/homelab/refresh-preview-postgres-stack.sh`
@@ -286,6 +287,20 @@ Expected local result:
    - `AUTO_DELIVERED`
    - `AUTO_DELIVERED_FALLBACK_SMS`
 10. confirm `/app/confirm`, `/ops`, and `/account` read the delivery result correctly before trusting the path on root
+
+## Customer notification provider smoke
+
+1. keep preview on Postgres
+2. ensure preview runtime has live `SOLAPI_*` values and approved Kakao template mapping
+3. run:
+   - `npm run smoke:customer-notification:preview:production-local -- --phone=010...`
+4. confirm the output JSON includes:
+   - `delivery.status`
+   - `confirmationUrl`
+   - `persistedDeliveryStatus`
+5. treat the smoke as release-green only when the delivery status is:
+   - `AUTO_DELIVERED`
+   - `AUTO_DELIVERED_FALLBACK_SMS`
 6. keep `AUTH_ENFORCE_TRUSTED_ORIGIN=true`
 7. optionally add `TRUSTED_ORIGINS` only when more than one trusted browser origin is intentionally allowed
 8. verify login challenge delivery from `/login` without relying on any debug link
